@@ -75,4 +75,23 @@ plink --bfile d3 --mind 0.02 --make-bed --out d4 --allow-no-sex
 plink --bfile d4 --genome --min 0.2 --out pihat_min0.2 --allow-no-sex
 plink --bfile d4 --missing --out missing_report --allow-no-sex
 awk '$10 > 0.2 {print $1, $2, $3, $4}' pihat_min0.2.genome > related_pairs.txt
+
+echo "206667660001_R07C01
+206752750007_R11C02
+206767120002_R02C01
+206767120002_R08C01
+206767120002_R08C02
+206767120003_R02C02
+206767120003_R12C01" > related_remove.txt
+
+cat related_remove.txt | awk '{print $1 "\t" $1}' > to_remove.txt
+
+plink --bfile d4 --remove to_remove.txt --allow-no-sex --make-bed --out d5
+plink --bfile d5 --maf 0.001 --make-bed --out d6
+```
+
+```bash
+plink2 --bfile d6 --pca 10 --out pca
+plink --bfile d6 --covar pca.eigenvec --allow-no-sex  --model --out model_mafs_filtered
+cat model_mafs_filtered.model | awk '$10 != "NA" && $10 < 1e-3' | sort -gk 9,9
 ```
