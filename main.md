@@ -96,6 +96,8 @@ plink --bfile d6 --covar pca.eigenvec --allow-no-sex  --model --out model_mafs_f
 cat model_mafs_filtered.model | awk '$10 != "NA"' | sort -gk 10,10 | head -n 10
 ```
 
+top 10:
+```
  CHR                                                  SNP   A1   A2     TEST            AFF          UNAFF        CHISQ   DF            P
   10                                           rs11257090    G    A      DOM          40/43          74/18        19.98    1    7.841e-06
    2                                             rs512681    A    C    TREND         34/134         11/173        18.77    1    1.477e-05
@@ -106,3 +108,10 @@ cat model_mafs_filtered.model | awk '$10 != "NA"' | sort -gk 10,10 | head -n 10
   10                                           rs11257090    G    A     GENO       11/29/43       18/56/18         20.1    2    4.314e-05
    3                                            rs7614865    A    G  ALLELIC          1/167         20/164        16.52    1    4.802e-05
   18                                            rs6508337    G    A  ALLELIC         34/134         11/173        16.02    1    6.282e-05
+```
+
+Need to fix:
+- HWE filter
+- add PCA (currently not used)
+- impute sex
+- possibly change MAF filter
