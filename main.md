@@ -93,5 +93,16 @@ plink --bfile d5 --maf 0.001 --make-bed --out d6
 ```bash
 plink2 --bfile d6 --pca 10 --out pca
 plink --bfile d6 --covar pca.eigenvec --allow-no-sex  --model --out model_mafs_filtered
-cat model_mafs_filtered.model | awk '$10 != "NA" && $10 < 1e-3' | sort -gk 9,9
+cat model_mafs_filtered.model | awk '$10 != "NA"' | sort -gk 10,10 | head -n 10
 ```
+
+ CHR                                                  SNP   A1   A2     TEST            AFF          UNAFF        CHISQ   DF            P
+  10                                           rs11257090    G    A      DOM          40/43          74/18        19.98    1    7.841e-06
+   2                                             rs512681    A    C    TREND         34/134         11/173        18.77    1    1.477e-05
+   3                                           rs13081814    G    A    TREND         53/115         24/160        17.85    1    2.396e-05
+  18                                            rs6508337    G    A    TREND         34/134         11/173        17.71    1    2.574e-05
+   3                                           rs13081814    G    A  ALLELIC         53/115         24/160        17.59    1    2.733e-05
+  23                                            rs5985961    T    C  ALLELIC         30/138         69/115        16.76    1    4.238e-05
+  10                                           rs11257090    G    A     GENO       11/29/43       18/56/18         20.1    2    4.314e-05
+   3                                            rs7614865    A    G  ALLELIC          1/167         20/164        16.52    1    4.802e-05
+  18                                            rs6508337    G    A  ALLELIC         34/134         11/173        16.02    1    6.282e-05
