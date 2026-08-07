@@ -234,4 +234,101 @@ bcftools view -v indels dauren_annotated.vcf.gz -H | grep -vc "RS="
 # 229
 bcftools view -v snps dauren_annotated.vcf.gz -H | grep -vc "RS="
 # 12837
+bcftools view -v indels dauren_annotated.vcf.gz -H | wc -l
+1260
+bcftools view -v snps dauren_annotated.vcf.gz -H | wc -l
+247089
+
+echo "scale=4; 229/1260" | bc
+# .1817
+echo "scale=4; 12837/247089" | bc
+# .0519
 ```
+
+Now ID cleanup and deduplication:
+```
+mkdir -p ./tmp_sort
+
+# 1. Set ID to RS number where matched (chr_pos will be applied separately below for unmatched)
+bcftools annotate --set-id '%INFO/RS' dauren_annotated.vcf.gz -Oz -o step1.vcf.gz
+tabix -p vcf step1.vcf.gz
+
+# Check how many still have ID="." (RS empty) vs proper rs numbers
+bcftools query -f '%ID\n' step1.vcf.gz | grep -c "^\.$"
+
+# 2. Split matched/unmatched, set chr_pos ID only on the unmatched subset, recombine.
+#    (bcftools annotate -i/-e filters the WHOLE output, not just which rows get touched —
+#     so we split first instead of trying to scope the --set-id call in place.)
+bcftools view -e 'ID="."' step1.vcf.gz -Oz -o matched.vcf.gz
+bcftools view -i 'ID="."' step1.vcf.gz -Oz -o unmatched.vcf.gz
+tabix -p vcf matched.vcf.gz
+
+bcftools annotate --set-id '%CHROM\_%POS' unmatched.vcf.gz -Oz -o unmatched.id.vcf.gz
+tabix -p vcf unmatched.id.vcf.gz
+
+bcftools concat matched.vcf.gz unmatched.id.vcf.gz -Oz -o step2_unsorted.vcf.gz
+bcftools sort -T ./tmp_sort/ step2_unsorted.vcf.gz -Oz -o step2.vcf.gz
+tabix -p vcf step2.vcf.gz
+
+# sanity check: should equal step1's total record count
+bcftools view -H step1.vcf.gz | wc -l
+bcftools view -H step2.vcf.gz | wc -l
+
+# 3. Drop withdrawn / non-unique-mapping / suspect variants
+#    (WTD is Type=Flag, Number=0 — test presence directly, don't compare to =1)
+bcftools view -e 'WTD || INFO/WGT>1 || INFO/SSR!=0' step2.vcf.gz -Oz -o step3.vcf.gz
+
+# 4. Remove exact duplicate records (same CHROM:POS:REF:ALT)
+bcftools norm -d exact step3.vcf.gz -Oz -o step4.vcf.gz
+
+# 5. Check for duplicate IDs (different sites, same rsID — dbSNP merge artifacts)
+bcftools query -f '%ID\n' step4.vcf.gz | sort | uniq -d > dup_ids.txt
+wc -l dup_ids.txt
+
+# 6. Remove ambiguous strand SNPs (A/T, C/G)
+bcftools view -e '(REF="A" & ALT="T") | (REF="T" & ALT="A") | (REF="C" & ALT="G") | (REF="G" & ALT="C")' \
+    step4.vcf.gz -Oz -o dauren_final.vcf.gz
+tabix -p vcf dauren_final.vcf.gz
+
+# 7. Final count log
+echo "Split+annotated:      $(bcftools view -H dauren_annotated.vcf.gz | wc -l)"
+echo "After ID fix (step2): $(bcftools view -H step2.vcf.gz | wc -l)"
+echo "After suspect filter:  $(bcftools view -H step3.vcf.gz | wc -l)"
+echo "After dedup:            $(bcftools view -H step4.vcf.gz | wc -l)"
+echo "Final (no ambig strand):$(bcftools view -H dauren_final.vcf.gz | wc -l)"
+```
+
+Output:
+```
+13066
+Checking the headers and starting positions of 2 files
+Concatenating matched.vcf.gz	28.113457 seconds
+Concatenating unmatched.id.vcf.gz
+The chromosome block 1 is not contiguous, consider running with -a.
+Writing to ./tmp_sort/SwOwp3
+[W::bgzf_read_block] EOF marker is absent. The input may be truncated
+[E::vcf_parse_format_check7] Number of columns at Y:22255793 does not match the number of samples (169 vs 192)
+Error encountered while parsing the input
+Cleaning
+[W::bgzf_read_block] EOF marker is absent. The input may be truncated
+248349
+[W::bcf_sr_add_hreader] No BGZF EOF marker; file 'step2.vcf.gz' may be truncated
+[E::vcf_parse_format_check7] Number of columns at Y:22255793 does not match the number of samples (169 vs 192)
+Error: VCF parse error
+235278
+[W::bcf_sr_add_hreader] No BGZF EOF marker; file 'step2.vcf.gz' may be truncated
+[E::vcf_parse_format_check7] Number of columns at Y:22255793 does not match the number of samples (169 vs 192)
+Error: VCF parse error
+Lines   total/split/joined/realigned/mismatch_removed/dup_removed/skipped:	235097/0/0/0/0/6/0
+11 dup_ids.txt
+Split+annotated:      248349
+[W::bcf_sr_add_hreader] No BGZF EOF marker; file 'step2.vcf.gz' may be truncated
+[E::vcf_parse_format_check7] Number of columns at Y:22255793 does not match the number of samples (169 vs 192)
+Error: VCF parse error
+After ID fix (step2): 235278
+After suspect filter:  235097
+After dedup:            235091
+Final (no ambig strand):209976
+```
+
+Still not right. consul
