@@ -149,3 +149,89 @@ bcftools norm -c w -f ../GRCh38_genome/GRCh38_genome.fa ./dauren_gwas.vcf.gz -o 
 
 3) I will realign those 85 snps and split multiallelics
 Problem: I also need to convert my chip names into normal names and if i just split my multiallelics it might get broken. Need to find a solution
+I will convert my chip names into normal names now while it's still vcf using dbsnp:
+
+making plots of my vcf (2 not generated because its microarray)
+```
+bcftools stats -f ../GRCh38_genome/GRCh38_genome.fa \
+  ./dauren_gwas.vcf.gz > my.stats.log
+mkdir plots
+plot-vcfstats -T "Variants" \
+  -P -p ./plots/ my.stats.log
+```
+
+Annotation:
+```
+conda install bioconda::snpsift
+bcftools index dauren_gwas.vcf.gz
+
+wget https://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/common_all_20180418.vcf.gz
+wget https://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/common_all_20180418.vcf.gz.tbi
+
+bcftools index common_all_20180418.vcf.gz                         # might not be needed
+SnpSift annotate common_all_20180418.vcf.gz dauren_gwas.vcf.gz > dauren_annotated.vcf
+```
+
+235193/247814 variants now have rsIDs, as well as gene names    
+
+The file has this info now:
+```
+##INFO=<ID=WTD,Number=0,Type=Flag,Description="Is Withdrawn by submitter If one member ss is withdrawn by submitter, then this bit is set.  If all member ss' are withdrawn, then the rs is deleted to SNPHistory">
+##INFO=<ID=dbSNPBuildID,Number=1,Type=Integer,Description="First dbSNP Build for RS">
+##INFO=<ID=COMMON,Number=1,Type=Integer,Description="RS is a common SNP.  A common SNP is one that has at least one 1000Genomes population with a minor allele of frequency >= 1% and for which 2 or more founders contribute to that minor allele frequency.">
+##INFO=<ID=RS,Number=1,Type=Integer,Description="dbSNP ID (i.e. rs number)">
+##INFO=<ID=RV,Number=0,Type=Flag,Description="RS orientation is reversed">
+##INFO=<ID=TPA,Number=0,Type=Flag,Description="Provisional Third Party Annotation(TPA) (currently rs from PHARMGKB who will give phenotype data)">
+##INFO=<ID=NOV,Number=0,Type=Flag,Description="Rs cluster has non-overlapping allele sets. True when rs set has more than 2 alleles from different submissions and these sets share no alleles in common.">
+##INFO=<ID=GENEINFO,Number=1,Type=String,Description="Pairs each of gene symbol:gene id.  The gene symbol and id are delimited by a colon (:) and each pair is delimited by a vertical bar (|)">
+
+1	1243468	1_1168711;rs115005664	G	A	.	PASS	ASP;CAF=0.9968,0.003195;COMMON=1;GENEINFO=C1QTNF12:388581|FAM132A:388581;HD;KGPhase1;KGPhase3;NSN;REF;RS=115005664;RSPOS=1243468;SAO=0;SSR=0;TOPMED=0.99568361365953109,0.00431638634046890;VC=SNV;VLD;VP=0x050000000605040436000100;WGT=1;dbSNPBuildID=132	GT:GS:BAF:LRR	0/0:0.8352:0.00521636:-0.121801	0/0:0.8352:0:0.0350399
+```
+
+Checking how many annotated:
+```
+bcftools view -H dauren_annotated.vcf | grep -c "RS="
+#235193
+bcftools view -H dauren_annotated.vcf | wc -l
+#247814
+```
+
+Are the unannotated indels of SNVs?
+```
+bcftools view -v indels dauren_annotated.vcf -H | grep -vc "RS="
+#308
+bcftools view -v snps dauren_annotated.vcf -H | grep -vc "RS="
+#12313
+```
+
+I have 1260 indels and 246554 snps so 308/1260 = 0.25 and 12313/246554 = 0.05
+
+
+I might want to split my multiallelics before annotating:
+```
+bcftools norm -m -any -f /home/aygera/biostar/dauren_gwas/GRCh38_genome/GRCh38_genome.fa \
+    dauren_gwas.vcf.gz -Oz -o dauren_gwas.split.vcf.gz
+tabix -p vcf dauren_gwas.split.vcf.gz
+```
+
+Lines   total/split/joined/realigned/mismatch_removed/dup_removed/skipped:	247814/515/0/85/0/0/0
+
+
+Re-annotating (might want to redo it with the entire dbsnp, not just common variants):
+```
+SnpSift annotate common_all_20180418.vcf.gz dauren_gwas.split.vcf.gz > dauren_annotated.vcf
+bgzip dauren_annotated.vcf
+tabix -p vcf dauren_annotated.vcf.gz
+```
+
+Re-check annotation rate:
+```
+bcftools view -H dauren_annotated.vcf.gz | wc -l
+# 248349
+bcftools view -H dauren_annotated.vcf.gz | grep -c "RS="
+# 235283
+bcftools view -v indels dauren_annotated.vcf.gz -H | grep -vc "RS="
+# 229
+bcftools view -v snps dauren_annotated.vcf.gz -H | grep -vc "RS="
+# 12837
+```
