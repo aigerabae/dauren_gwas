@@ -22,6 +22,8 @@ bgzip vcf/*vcf*
 for f in vcf/*.vcf.gz; do tabix -p vcf -f $f;done
 bgzip dauren_gwas.vcf
 bcftools merge /home/aygera/biostar/dauren_gwas/vcf/*.vcf.gz -o dauren_gwas.vcf
+
+bgzip -c dauren_gwas.vcf > dauren_gwas.vcf.gz
 ```
 
 Starting anew with dauren_gwas.vcf and phenotypes.txt (i fixed it so 2023 has cases and 2024 controls and made sure the namings are consistent)
@@ -198,9 +200,9 @@ bcftools view -v indels dauren_annotated.vcf.gz -H | grep -vc "RS="
 bcftools view -v snps dauren_annotated.vcf.gz -H | grep -vc "RS="
 # 12837
 bcftools view -v indels dauren_annotated.vcf.gz -H | wc -l
-1260
+# 1260
 bcftools view -v snps dauren_annotated.vcf.gz -H | wc -l
-247089
+# 247089
 
 echo "scale=4; 229/1260" | bc
 # .1817
@@ -210,6 +212,10 @@ echo "scale=4; 12837/247089" | bc
 
 For the next step, I consistently had an issue with my drop out rates. Turns out, bcftools concat is the problem. Will use awk instead:
 ```
+# 1. Set ID to RS number where matched (chr_pos will be applied separately below for unmatched)
+bcftools annotate --set-id '%INFO/RS' dauren_annotated.vcf.gz -Oz -o step1.vcf.gz
+tabix -p vcf step1.vcf.gz
+
 # Adding rs to rsIDs:
 bcftools view step1.vcf.gz | \
   awk 'BEGIN{OFS="\t"} /^#/{print; next} {if($3=="."){$3=$1"_"$2} else if($3 !~ /^rs/){$3="rs"$3}; print}' | \
@@ -283,15 +289,22 @@ echo "Split+annotated:         248349"
 echo "After ID fix (step2):    $(bcftools view -H step2.vcf.gz | wc -l)"
 echo "After suspect filter:    $(bcftools view -H step3.vcf.gz | wc -l)"
 echo "After dedup:             $(bcftools view -H step4.vcf.gz | wc -l)"
-echo "Final (no ambig strand): $(bcftools view -H dauren_final.vcf.gz | wc -l)"
+echo "Final (no ambig strand): $(bcftools view -H dauren_final4.vcf.gz | wc -l)"
 ```
 
 Given how many times this exact -i-scoping mistake has bitten this pipeline, it's worth adopting as a standing rule for the rest of your workflow: never use bcftools annotate -i/-e when you want to edit a subset of records — it always filters the whole output. Use awk (single pass, safe) or the split/tabix-and-recombine-with-concat approach only when the two subsets are truly non-overlapping in genomic coordinates (which yours weren't, hence the earlier concat corruption too).
+
+Checking duplicates:
+```
+bcftools query -f '%CHROM\t%POS\t%ID\n' dauren_final4.vcf.gz | sort | uniq -d
+```
 
 All good. Moving on to PLINK conversion:
 ```
 mkdir plink
 cd plink
-plink -vcf ../dauren_final2.vcf.gz --double-id --pheno ../phenotypes.tsv --make-bed --out d1
+plink -vcf ../dauren_final4.vcf.gz --double-id --pheno ../phenotypes.tsv \
+    --make-bed --out d1 --allow-extra-chr
+echo "d1: $(wc -l < d1.fam) samples, $(wc -l < d1.bim) variants"
 ```
 
