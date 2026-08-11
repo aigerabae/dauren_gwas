@@ -160,54 +160,17 @@ plot-vcfstats -T "Variants" \
   -P -p ./plots/ my.stats.log
 ```
 
-Annotation:
+Installing needed tools and files for annotation:
 ```
 conda install bioconda::snpsift
 bcftools index dauren_gwas.vcf.gz
 
 wget https://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/common_all_20180418.vcf.gz
 wget https://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/common_all_20180418.vcf.gz.tbi
-
-bcftools index common_all_20180418.vcf.gz                         # might not be needed
-SnpSift annotate common_all_20180418.vcf.gz dauren_gwas.vcf.gz > dauren_annotated.vcf
 ```
 
-235193/247814 variants now have rsIDs, as well as gene names    
 
-The file has this info now:
-```
-##INFO=<ID=WTD,Number=0,Type=Flag,Description="Is Withdrawn by submitter If one member ss is withdrawn by submitter, then this bit is set.  If all member ss' are withdrawn, then the rs is deleted to SNPHistory">
-##INFO=<ID=dbSNPBuildID,Number=1,Type=Integer,Description="First dbSNP Build for RS">
-##INFO=<ID=COMMON,Number=1,Type=Integer,Description="RS is a common SNP.  A common SNP is one that has at least one 1000Genomes population with a minor allele of frequency >= 1% and for which 2 or more founders contribute to that minor allele frequency.">
-##INFO=<ID=RS,Number=1,Type=Integer,Description="dbSNP ID (i.e. rs number)">
-##INFO=<ID=RV,Number=0,Type=Flag,Description="RS orientation is reversed">
-##INFO=<ID=TPA,Number=0,Type=Flag,Description="Provisional Third Party Annotation(TPA) (currently rs from PHARMGKB who will give phenotype data)">
-##INFO=<ID=NOV,Number=0,Type=Flag,Description="Rs cluster has non-overlapping allele sets. True when rs set has more than 2 alleles from different submissions and these sets share no alleles in common.">
-##INFO=<ID=GENEINFO,Number=1,Type=String,Description="Pairs each of gene symbol:gene id.  The gene symbol and id are delimited by a colon (:) and each pair is delimited by a vertical bar (|)">
-
-1	1243468	1_1168711;rs115005664	G	A	.	PASS	ASP;CAF=0.9968,0.003195;COMMON=1;GENEINFO=C1QTNF12:388581|FAM132A:388581;HD;KGPhase1;KGPhase3;NSN;REF;RS=115005664;RSPOS=1243468;SAO=0;SSR=0;TOPMED=0.99568361365953109,0.00431638634046890;VC=SNV;VLD;VP=0x050000000605040436000100;WGT=1;dbSNPBuildID=132	GT:GS:BAF:LRR	0/0:0.8352:0.00521636:-0.121801	0/0:0.8352:0:0.0350399
-```
-
-Checking how many annotated:
-```
-bcftools view -H dauren_annotated.vcf | grep -c "RS="
-#235193
-bcftools view -H dauren_annotated.vcf | wc -l
-#247814
-```
-
-Are the unannotated indels of SNVs?
-```
-bcftools view -v indels dauren_annotated.vcf -H | grep -vc "RS="
-#308
-bcftools view -v snps dauren_annotated.vcf -H | grep -vc "RS="
-#12313
-```
-
-I have 1260 indels and 246554 snps so 308/1260 = 0.25 and 12313/246554 = 0.05
-
-
-I might want to split my multiallelics before annotating:
+Split my multiallelics before annotating:
 ```
 bcftools norm -m -any -f /home/aygera/biostar/dauren_gwas/GRCh38_genome/GRCh38_genome.fa \
     dauren_gwas.vcf.gz -Oz -o dauren_gwas.split.vcf.gz
@@ -217,14 +180,14 @@ tabix -p vcf dauren_gwas.split.vcf.gz
 Lines   total/split/joined/realigned/mismatch_removed/dup_removed/skipped:	247814/515/0/85/0/0/0
 
 
-Re-annotating (might want to redo it with the entire dbsnp, not just common variants):
+Annotating (might want to redo it with the entire dbsnp, not just common variants):
 ```
 SnpSift annotate common_all_20180418.vcf.gz dauren_gwas.split.vcf.gz > dauren_annotated.vcf
 bgzip dauren_annotated.vcf
 tabix -p vcf dauren_annotated.vcf.gz
 ```
 
-Re-check annotation rate:
+Check annotation rate:
 ```
 bcftools view -H dauren_annotated.vcf.gz | wc -l
 # 248349
@@ -245,90 +208,90 @@ echo "scale=4; 12837/247089" | bc
 # .0519
 ```
 
-Now ID cleanup and deduplication:
+For the next step, I consistently had an issue with my drop out rates. Turns out, bcftools concat is the problem. Will use awk instead:
 ```
-mkdir -p ./tmp_sort
-
-# 1. Set ID to RS number where matched (chr_pos will be applied separately below for unmatched)
-bcftools annotate --set-id '%INFO/RS' dauren_annotated.vcf.gz -Oz -o step1.vcf.gz
-tabix -p vcf step1.vcf.gz
-
-# Check how many still have ID="." (RS empty) vs proper rs numbers
-bcftools query -f '%ID\n' step1.vcf.gz | grep -c "^\.$"
-
-# 2. Split matched/unmatched, set chr_pos ID only on the unmatched subset, recombine.
-#    (bcftools annotate -i/-e filters the WHOLE output, not just which rows get touched —
-#     so we split first instead of trying to scope the --set-id call in place.)
-bcftools view -e 'ID="."' step1.vcf.gz -Oz -o matched.vcf.gz
-bcftools view -i 'ID="."' step1.vcf.gz -Oz -o unmatched.vcf.gz
-tabix -p vcf matched.vcf.gz
-
-bcftools annotate --set-id '%CHROM\_%POS' unmatched.vcf.gz -Oz -o unmatched.id.vcf.gz
-tabix -p vcf unmatched.id.vcf.gz
-
-bcftools concat matched.vcf.gz unmatched.id.vcf.gz -Oz -o step2_unsorted.vcf.gz
-bcftools sort -T ./tmp_sort/ step2_unsorted.vcf.gz -Oz -o step2.vcf.gz
+# Adding rs to rsIDs:
+bcftools view step1.vcf.gz | \
+  awk 'BEGIN{OFS="\t"} /^#/{print; next} {if($3=="."){$3=$1"_"$2} else if($3 !~ /^rs/){$3="rs"$3}; print}' | \
+  bgzip > step2.vcf.gz
 tabix -p vcf step2.vcf.gz
+bgzip -t step2.vcf.gz && echo "bgzip OK"
+bcftools view -H step2.vcf.gz | wc -l   # expect 248349
 
-# sanity check: should equal step1's total record count
-bcftools view -H step1.vcf.gz | wc -l
-bcftools view -H step2.vcf.gz | wc -l
+bcftools view -e 'WTD || (INFO/WGT!="." && INFO/WGT>1) || (INFO/SSR!="." && INFO/SSR!=0)' \
+    step2.vcf.gz -Oz -o step3.vcf.gz
 
-# 3. Drop withdrawn / non-unique-mapping / suspect variants
-#    (WTD is Type=Flag, Number=0 — test presence directly, don't compare to =1)
-bcftools view -e 'WTD || INFO/WGT>1 || INFO/SSR!=0' step2.vcf.gz -Oz -o step3.vcf.gz
+bcftools view -H step3.vcf.gz | wc -l
 
-# 4. Remove exact duplicate records (same CHROM:POS:REF:ALT)
 bcftools norm -d exact step3.vcf.gz -Oz -o step4.vcf.gz
+bcftools view -H step4.vcf.gz | wc -l
 
-# 5. Check for duplicate IDs (different sites, same rsID — dbSNP merge artifacts)
 bcftools query -f '%ID\n' step4.vcf.gz | sort | uniq -d > dup_ids.txt
 wc -l dup_ids.txt
 
-# 6. Remove ambiguous strand SNPs (A/T, C/G)
 bcftools view -e '(REF="A" & ALT="T") | (REF="T" & ALT="A") | (REF="C" & ALT="G") | (REF="G" & ALT="C")' \
-    step4.vcf.gz -Oz -o dauren_final.vcf.gz
-tabix -p vcf dauren_final.vcf.gz
+    step4.vcf.gz -Oz -o dauren_final3.vcf.gz
+tabix -p vcf dauren_final3.vcf.gz
+
+bgzip -t dauren_final3.vcf.gz && echo "bgzip OK"
+bcftools view -H dauren_final3.vcf.gz | wc -l
+
+echo "rs-annotated:  $(bcftools query -f '%ID\n' dauren_final3.vcf.gz | grep -c '^rs')"
+echo "chr_pos fallback: $(bcftools query -f '%ID\n' dauren_final3.vcf.gz | grep -vc '^rs')"
+```
+
+I need to de duplicate my values again after re-introducing my un-annotated variants:
+```
+# Pass 1: identify which CHROM:POS:ID combos are duplicated
+bcftools query -f '%CHROM\t%POS\t%ID\n' dauren_final3.vcf.gz | sort | uniq -d | awk '{print $1"\t"$2"\t"$3}' > dup_keys.txt
+cat dup_keys.txt   # should show all 6: the rs729172 one plus these 5
+
+# Pass 2: rewrite ID for any row matching a dup key, appending ALT
+bcftools view dauren_final3.vcf.gz | \
+  awk -v dupfile=dup_keys.txt '
+    BEGIN{
+      OFS="\t"
+      while((getline line < dupfile) > 0){
+        split(line, a, "\t")
+        dup[a[1]"\t"a[2]"\t"a[3]]=1
+      }
+    }
+    /^#/{print; next}
+    {
+      key=$1"\t"$2"\t"$3
+      if(key in dup){ $3=$3"_"$5 }
+      print
+    }
+  ' | bgzip > dauren_final4.vcf.gz
+
+tabix -p vcf dauren_final4.vcf.gz
+```
+
+Checking specific numbers - how many were filtered out:
+```
+# Withdrawn = 0
+bcftools view -i 'WTD' step2.vcf.gz -H | wc -l
+
+# Non-unique mapping (WGT > 1) = 0
+bcftools view -i 'INFO/WGT>1' step2.vcf.gz -H | wc -l
+
+# Suspect (SSR != 0) = 181
+bcftools view -i 'INFO/SSR!="." && INFO/SSR!=0' step2.vcf.gz -H | wc -l
 
 # 7. Final count log
-echo "Split+annotated:      $(bcftools view -H dauren_annotated.vcf.gz | wc -l)"
-echo "After ID fix (step2): $(bcftools view -H step2.vcf.gz | wc -l)"
-echo "After suspect filter:  $(bcftools view -H step3.vcf.gz | wc -l)"
-echo "After dedup:            $(bcftools view -H step4.vcf.gz | wc -l)"
-echo "Final (no ambig strand):$(bcftools view -H dauren_final.vcf.gz | wc -l)"
+echo "Split+annotated:         248349"
+echo "After ID fix (step2):    $(bcftools view -H step2.vcf.gz | wc -l)"
+echo "After suspect filter:    $(bcftools view -H step3.vcf.gz | wc -l)"
+echo "After dedup:             $(bcftools view -H step4.vcf.gz | wc -l)"
+echo "Final (no ambig strand): $(bcftools view -H dauren_final.vcf.gz | wc -l)"
 ```
 
-Output:
+Given how many times this exact -i-scoping mistake has bitten this pipeline, it's worth adopting as a standing rule for the rest of your workflow: never use bcftools annotate -i/-e when you want to edit a subset of records — it always filters the whole output. Use awk (single pass, safe) or the split/tabix-and-recombine-with-concat approach only when the two subsets are truly non-overlapping in genomic coordinates (which yours weren't, hence the earlier concat corruption too).
+
+All good. Moving on to PLINK conversion:
 ```
-13066
-Checking the headers and starting positions of 2 files
-Concatenating matched.vcf.gz	28.113457 seconds
-Concatenating unmatched.id.vcf.gz
-The chromosome block 1 is not contiguous, consider running with -a.
-Writing to ./tmp_sort/SwOwp3
-[W::bgzf_read_block] EOF marker is absent. The input may be truncated
-[E::vcf_parse_format_check7] Number of columns at Y:22255793 does not match the number of samples (169 vs 192)
-Error encountered while parsing the input
-Cleaning
-[W::bgzf_read_block] EOF marker is absent. The input may be truncated
-248349
-[W::bcf_sr_add_hreader] No BGZF EOF marker; file 'step2.vcf.gz' may be truncated
-[E::vcf_parse_format_check7] Number of columns at Y:22255793 does not match the number of samples (169 vs 192)
-Error: VCF parse error
-235278
-[W::bcf_sr_add_hreader] No BGZF EOF marker; file 'step2.vcf.gz' may be truncated
-[E::vcf_parse_format_check7] Number of columns at Y:22255793 does not match the number of samples (169 vs 192)
-Error: VCF parse error
-Lines   total/split/joined/realigned/mismatch_removed/dup_removed/skipped:	235097/0/0/0/0/6/0
-11 dup_ids.txt
-Split+annotated:      248349
-[W::bcf_sr_add_hreader] No BGZF EOF marker; file 'step2.vcf.gz' may be truncated
-[E::vcf_parse_format_check7] Number of columns at Y:22255793 does not match the number of samples (169 vs 192)
-Error: VCF parse error
-After ID fix (step2): 235278
-After suspect filter:  235097
-After dedup:            235091
-Final (no ambig strand):209976
+mkdir plink
+cd plink
+plink -vcf ../dauren_final2.vcf.gz --double-id --pheno ../phenotypes.tsv --make-bed --out d1
 ```
 
-Still not right. consul
