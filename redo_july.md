@@ -27,12 +27,61 @@ array-analysis-cli genotype gtc-to-vcf \
     --gtc-sample-sheet ./sample_sheet/dauren_gwas_sample_sheet.csv \
     --csv-manifest ./manifest_csv/InfiniumImmunoArray-24v2-0_A2.csv \
     --output-folder ./vcf
+```
 
+Ref alt consistency of each vcf file:
+```
+mkdir -p ~/biostar/dauren_gwas/redo_july/before_merging
+cd ~/biostar/dauren_gwas/redo_july/before_merging
+
+REF=/home/aygera/biostar/dauren_gwas/GRCh38_genome/GRCh38_genome.fa
+VCFDIR=~/biostar/dauren_gwas/vcf
+
+# make sure the fasta is indexed (needed by bcftools norm)
+if [ ! -f "${REF}.fai" ]; then
+    samtools faidx "$REF"
+fi
+
+# summary log
+echo -e "sample\ttotal_records\tref_mismatches" > refcheck_summary.tsv
+
+for vcf in ${VCFDIR}/*.vcf.gz; do
+    sample=$(basename "$vcf" .vcf.gz)
+    echo "=== Checking $sample ==="
+
+    # -w = warn only, don't modify; just want a diagnostic count per sample
+    bcftools norm --check-ref w -f "$REF" "$vcf" -Oz -o /dev/null 2> "${sample}.refcheck.log"
+
+    total=$(bcftools view -H "$vcf" | wc -l)
+    mismatches=$(grep -c "REF_MISMATCH" "${sample}.refcheck.log")
+
+    echo -e "${sample}\t${total}\t${mismatches}" >> refcheck_summary.tsv
+done
+
+echo ""
+echo "=== Summary ==="
+column -t refcheck_summary.tsv
+```
+
+Checking the results:
+```
+cd ~/biostar/dauren_gwas/redo_july/before_merging
+cat refcheck_summary.tsv
+
+# total mismatches across all samples
+awk -F'\t' 'NR>1{sum+=$3} END{print "Total mismatches across all samples:", sum}' refcheck_summary.tsv
+
+# any sample with a notably higher rate than others is worth a closer look —
+# could indicate a specific batch/plate issue
+awk -F'\t' 'NR>1{print $1, $3/$2*100"%"}' refcheck_summary.tsv | sort -k2 -rn | head
+```
+
+No strand errors are present. Proceeding to merging:
+```
 bgzip vcf/*vcf*
 for f in vcf/*.vcf.gz; do tabix -p vcf -f $f;done
 bgzip dauren_gwas.vcf
 bcftools merge /home/aygera/biostar/dauren_gwas/vcf/*.vcf.gz -o dauren_gwas.vcf
-
 bgzip -c dauren_gwas.vcf > dauren_gwas.vcf.gz
 ```
 
