@@ -653,3 +653,129 @@ plt.title('PCA colored by case/control status')
 plt.savefig('pca_case_control.png', dpi=150)
 ```
 
+Might want to double check whether the same samples that have sex imputation issues are the same ones that cluster are outliers in pca_case_control
+
+# 9 Saving ancestry outliers:
+```python
+# Flag ancestry/genotyping outliers from PC1/PC2 — not case/control related, general outliers
+import pandas as pd
+pca = pd.read_csv('pca.eigenvec', sep=r'\s+')
+pca.columns = [c.lstrip('#') for c in pca.columns]
+
+mean1, sd1 = pca['PC1'].mean(), pca['PC1'].std()
+mean2, sd2 = pca['PC2'].mean(), pca['PC2'].std()
+
+outliers = pca[
+    (abs(pca['PC1'] - mean1) > 4*sd1) |
+    (abs(pca['PC2'] - mean2) > 4*sd2)
+]
+print(f"Ancestry/PCA outliers: {len(outliers)}")
+outliers[['FID','IID']].to_csv('pca_outliers.txt', sep='\t', index=False, header=False)
+print(outliers[['FID','IID','PC1','PC2']])
+```
+
+# 10 calculating effective number of tests
+```bash
+plink --bfile d10_pruned --indep-pairwise 50 5 0.2 --out prune_eff
+wc -l prune_eff.prune.in
+```
+
+```python
+# Simple LD-pruned-count Bonferroni as a first-pass effective threshold
+n_pruned = sum(1 for _ in open('prune_eff.prune.in'))
+alpha_naive = 0.05 / n_pruned
+print(f"Pruned variant count: {n_pruned}")
+print(f"Effective-test-adjusted threshold: {alpha_naive:.3e}")
+
+# Pruned variant count: 50923
+# Effective-test-adjusted threshold: 9.819e-07
+```
+
+# 11 MAF table sanity check
+```
+plink --bfile d10 --freq --out d10_freq
+awk 'NR==FNR{ids[$3]; next} FNR==1 || ($3 in ids)' \
+    <(head -20 gwas_firth_sorted.txt) d10_freq.frq
+```
+
+# 12 formal power calculation
+```R
+install.packages("remotes")
+remotes::install_version("genpwr", version = "1.0.4", repos = "https://cloud.r-project.org")
+
+library(genpwr)
+# adjust N/Case.Rate to your actual final d10 (or d10_noanc) sample counts
+power_result <- genpwr.calc(
+  calc = "power", model = "logistic",
+  N = 179, Case.Rate = 91/179,
+  MAF = seq(0.01, 0.5, 0.01),
+  OR = c(1.5, 2, 3, 5),
+  Alpha = 5e-8,   # or your effective-test threshold from above
+  True.Model = "Additive", Test.Model = "Additive"
+)
+write.csv(power_result, "power_calculation.csv", row.names = FALSE)
+```
+
+Visualizing it:
+```python
+import pandas as pd
+pw = pd.read_csv('power_calculation.csv')
+print(pw.columns.tolist())
+print(pw.head(10))
+
+import matplotlib.pyplot as plt
+
+power_col = [c for c in pw.columns if c.startswith('Power_at_Alpha_5e-08')][0]  # grab it dynamically
+
+plt.figure(figsize=(8,6))
+for or_val in sorted(pw['OR'].unique()):
+    sub = pw[pw['OR']==or_val].sort_values('MAF')
+    plt.plot(sub['MAF'], sub[power_col], marker='o', label=f'OR={or_val}')
+
+plt.axhline(0.8, color='red', linestyle='--', label='80% power threshold')
+plt.xlabel('MAF')
+plt.ylabel('Power')
+plt.title(f'Power by MAF and OR (N={pw["N_total"].iloc[0]}, α=5e-8)')
+plt.legend()
+plt.savefig('power_curve.png', dpi=150)
+```
+
+"Post-hoc power calculations indicated this study was adequately powered (≥80%) only to detect large-effect common variants (OR≥5, MAF≥0.33) at genome-wide significance (α=5×10⁻⁸); power to detect more modest effects (OR≤3), which are more typical of complex-trait susceptibility loci, remained below 30% across the tested MAF range (Figure SX). This limits our ability to draw firm conclusions from the absence of genome-wide significant findings and supports interpreting the suggestive associations reported here (Table X) as hypothesis-generating, warranting replication in larger, independent cohorts."
+
+Power calculation for suggestive variants:
+```R
+power_suggestive <- genpwr.calc(
+  calc = "power", model = "logistic",
+  N = 179, Case.Rate = 91/179,
+  MAF = seq(0.01, 0.5, 0.01),
+  OR = c(1.5, 2, 3, 5),
+  Alpha = 1e-5,   # your suggestive/effective threshold
+  True.Model = "Additive", Test.Model = "Additive"
+)
+write.csv(power_suggestive, "power_calculation_suggestive.csv", row.names = FALSE)
+```
+
+
+Visualizing:
+```python
+import pandas as pd
+pw = pd.read_csv('power_calculation_suggestive.csv')
+print(pw.columns.tolist())
+print(pw.head(10))
+
+import matplotlib.pyplot as plt
+
+power_col = [c for c in pw.columns if c.startswith('Power')][0]  # grab it dynamically
+
+plt.figure(figsize=(8,6))
+for or_val in sorted(pw['OR'].unique()):
+    sub = pw[pw['OR']==or_val].sort_values('MAF')
+    plt.plot(sub['MAF'], sub[power_col], marker='o', label=f'OR={or_val}')
+
+plt.axhline(0.8, color='red', linestyle='--', label='80% power threshold')
+plt.xlabel('MAF')
+plt.ylabel('Power')
+plt.title(f'Power by MAF and OR (N={pw["N_total"].iloc[0]}, α=1e-05)')
+plt.legend()
+plt.savefig('power_curve_suggestive.png', dpi=150)
+```
