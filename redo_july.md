@@ -779,3 +779,5 @@ plt.title(f'Power by MAF and OR (N={pw["N_total"].iloc[0]}, α=1e-05)')
 plt.legend()
 plt.savefig('power_curve_suggestive.png', dpi=150)
 ```
+
+Still need to consult on this plot.
