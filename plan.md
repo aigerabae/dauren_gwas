@@ -1,13 +1,13 @@
-1) genotype calling
-2) confirm gtc isn't silently dropping any samples
-4) Check REF/ALT consistency and strand orientation against the reference FASTA before merge (bcftools norm -check-ref).
-5) get stats for my vcf file (snps, indels, etc.)
-6) Compress merged output: bgzip dauren_gwas.vcf + index.
-7) splitting multiallelics
-8) annotation of variants - rsid and genes
-9) Filter/flag on WGT, SSR, and WTD - withdrawn, non-unique-mapping, and suspect variants
-10) remove full duplicates; identify duplicates by rsid and assign them different names if ref/alt/position are slightly different
-11) remove Ambiguous strand SNPs (A/T, C/G)
+~~1) genotype calling~~
+~~2) confirm gtc isn't silently dropping any samples~~
+~~4) Check REF/ALT consistency and strand orientation against the reference FASTA before merge (bcftools norm -check-ref).~~
+~~5) get stats for my vcf file (snps, indels, etc.)~~
+~~6) Compress merged output: bgzip dauren_gwas.vcf + index.~~
+~~7) splitting multiallelics~~
+~~8) annotation of variants - rsid and genes~~
+~~9) Filter/flag on WGT, SSR, and WTD - withdrawn, non-unique-mapping, and suspect variants~~
+~~10) remove full duplicates; identify duplicates by rsid and assign them different names if ref/alt/position are slightly different~~
+~~11) remove Ambiguous strand SNPs (A/T, C/G)~~
 12) Genotyping call rate per sample (--mind) — you have this, keep 0.02–0.05.
 13) Heterozygosity outliers — compute --het, exclude samples >±3-4 SD from mean heterozygosity (catches contamination/inbreeding artifacts). You're missing this entirely.
 14) Sex check — apply a documented threshold (e.g., F<0.2 = female, F>0.8 = male for X-het; or YCOUNT-based cutoff from your histogram — pick the valley between the two clusters) and flag/exclude discordant sex.
