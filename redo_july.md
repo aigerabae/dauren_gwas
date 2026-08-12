@@ -1,3 +1,13 @@
+Versions of everything:
+```
+bcftools 1.24
+plink1.9 and plink2
+array analysis cli linux x64 2.1.0
+bgzip 1.24
+SnpSift 5.4c (build 2026-02-23)
+tabix 1.24
+```
+
 Keep the same:
 ```
 echo 'export PATH=/home/aygera/tools/array-analysis-cli-linux-x64-v2.1.0/array-analysis-cli/:$PATH' >> ~/.bashrc
