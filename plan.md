@@ -35,10 +35,10 @@
 36) Sample size/power justification — a priori or post hoc power calculation (e.g., via genpwr or CaTS).  
 37) optional from me: use KGWAS to increase power: https://pmc.ncbi.nlm.nih.gov/articles/PMC11643201/  
 38) sample/variant count log per QC step - halfway through  
-39) Genotype distribution by affection status for top variants. A supplementary table showing per-genotype counts (not just allele counts) split by case/control for every variant in your results tables — lets readers assess whether an association is driven by a small subgroup. Not covered anywhere in your list.
-40) Reviewer 1 explicitly checked your top variants against the NDKP platform and found them far from significance for AD, then suggested gnomAD-based AF comparison to help interpret this (error vs. ancestry-specific signal). Your TOPMED/CAF annotation (already in your VCF) helps here, but this needs to become an explicit results-section action: pull gnomAD AFs for your top hits and discuss.
-41) Ethnicity/inclusion criteria definition (Reviewer 1)
-"Non-Kazakh individuals were removed" needs an explicit, defensible definition (the reviewer's own example: parents Kazakh, born elsewhere — counted or not?). Not a code step, but a methods-writing task that needs deciding.
-42) Version-pin array-analysis-cli, bcftools, plink/plink2 and record in methods (reproducibility).  
+39) Genotype distribution by affection status for top variants. A supplementary table showing per-genotype counts (not just allele counts) split by case/control for every variant in your results tables — lets readers assess whether an association is driven by a small subgroup. Not covered anywhere in your list.  
+40) Reviewer 1 explicitly checked your top variants against the NDKP platform and found them far from significance for AD, then suggested gnomAD-based AF comparison to help interpret this (error vs. ancestry-specific signal). Your TOPMED/CAF annotation (already in your VCF) helps here, but this needs to become an explicit results-section action: pull gnomAD AFs for your top hits and discuss.  
+41) Ethnicity/inclusion criteria definition (Reviewer 1)  
+"Non-Kazakh individuals were removed" needs an explicit, defensible definition (the reviewer's own example: parents Kazakh, born elsewhere — counted or not?). Not a code step, but a methods-writing task that needs deciding.  
+42) Version-pin array-analysis-cli, bcftools, plink/plink2 and record in methods (reproducibility).    
 
 
