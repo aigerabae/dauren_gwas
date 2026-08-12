@@ -363,7 +363,293 @@ All good. Moving on to PLINK conversion:
 mkdir plink
 cd plink
 plink -vcf ../dauren_final4.vcf.gz --double-id --pheno ../phenotypes.tsv \
-    --make-bed --out d1 --allow-extra-chr
+    --make-bed --out d1 --allow-extra-chr --allow-no-sex
 echo "d1: $(wc -l < d1.fam) samples, $(wc -l < d1.bim) variants"
+```
+
+# PLINK QC:
+# 0. Setup and initial conversion
+```
+echo "d1: $(wc -l < d1.fam) samples, $(wc -l < d1.bim) variants" >> ../qc_log/counts.txt
+cat ../qc_log/counts.txt
+
+plink --bfile d1 --list-duplicate-vars ids-only suppress-first --out dup_check --allow-no-sex
+wc -l dup_check.dupvar
+```
+
+Getting a log of how many variants are retained/lost:
+```
+mkdir -p ../qc_log
+echo "d1: $(wc -l < d1.fam) samples, $(wc -l < d1.bim) variants" >> ../qc_log/counts.txt
+cat ../qc_log/counts.txt
+```
+
+# 1. Duplicate variant check (sanity check post-VCF-conversion)
+```
+# if nonzero, remove
+if [ -s dup_check.dupvar ]; then
+    plink --bfile d1 --exclude dup_check.dupvar --make-bed --out d1b --allow-no-sex
+else
+    cp d1.bed d1b.bed; cp d1.bim d1b.bim; cp d1.fam d1b.fam
+fi
+echo "d1b (dedup): $(wc -l < d1b.fam) samples, $(wc -l < d1b.bim) variants" >> ../qc_log/counts.txt
+```
+
+# 2. Sample-level QC — call rate, heterozygosity, sex
+```
+# 2a. Initial call rate filters (liberal, just to stabilize downstream stats)
+plink --bfile d1b --geno 0.05 --make-bed --out d2 --allow-no-sex
+plink --bfile d2 --mind 0.05 --make-bed --out d3 --allow-no-sex
+echo "d3 (geno/mind pre-filter): $(wc -l < d3.fam) samples, $(wc -l < d3.bim) variants" >> ../qc_log/counts.txt
+
+# 2b. Heterozygosity outliers
+plink --bfile d3 --het --out het_check --allow-no-sex
+```
+
+```python
+import pandas as pd
+het = pd.read_csv('het_check.het', sep=r'\s+')
+het['HET_RATE'] = (het['N(NM)'] - het['O(HOM)']) / het['N(NM)']
+mean, sd = het['HET_RATE'].mean(), het['HET_RATE'].std()
+outliers = het[(het['HET_RATE'] < mean - 3*sd) | (het['HET_RATE'] > mean + 3*sd)]
+outliers[['FID','IID']].to_csv('het_outliers.txt', sep='\t', index=False, header=False)
+print(f"Mean het rate: {mean:.4f}, SD: {sd:.4f}, outliers: {len(outliers)}")
+```
+
+Mean het rate: 0.2824, SD: 0.0059, outliers: 1
+
+```bash
+plink --bfile d3 --remove het_outliers.txt --make-bed --out d4 --allow-no-sex
+echo "d4 (het-outlier removed): $(wc -l < d4.fam) samples, $(wc -l < d4.bim) variants" >> ../qc_log/counts.txt
+```
+
+2c. Sex check — documented threshold, not eyeballed
+```
+plink --bfile d4 --impute-sex ycount --make-bed --out d5 --allow-no-sex
+```
+
+```python
+import pandas as pd
+sc = pd.read_csv('d5.sexcheck', sep=r'\s+')
+sc.to_csv('sexcheck_full.tsv', sep='\t', index=False)
+print(sc['STATUS'].value_counts())
+# PROBLEM rows are where imputed sex disagrees with reported/pedigree sex
+problems = sc[sc['STATUS'] == 'PROBLEM']
+problems[['FID','IID']].to_csv('sex_discordant.txt', sep='\t', index=False, header=False)
+print(f"Sex-discordant samples: {len(problems)}")
+```
+
+STATUS
+PROBLEM    184
+Name: count, dtype: int64
+Sex-discordant samples: 184
+
+Making histogram:
+```
+import pandas as pd
+import matplotlib.pyplot as plt
+
+sc = pd.read_csv('d5.sexcheck', sep=r'\s+')
+
+plt.figure()
+plt.scatter(sc['F'], sc['YCOUNT'] if 'YCOUNT' in sc.columns else sc.index, s=10)
+plt.title("F vs. YCOUNT")
+plt.xlabel("F (X-heterozygosity)")
+plt.ylabel("YCOUNT")
+plt.savefig('f_vs_y_d5.png')
+
+plt.figure()
+sc['F'].hist(bins=30)
+plt.title('F Distribution')
+plt.xlabel('F')
+plt.ylabel('Frequency')
+plt.savefig('f_hist_d5.png')
+
+print(sc[['PEDSEX','SNPSEX','F']].describe())
+print(sc['PEDSEX'].value_counts())
+print(sc['SNPSEX'].value_counts())
+
+plt.figure(figsize=(10,5))
+plt.hist(sc['F'], bins=60)
+plt.axvline(0.30, color='green', linestyle='--', label='current female-max')
+plt.axvline(0.45, color='red', linestyle='--', label='current male-min')
+plt.xlim(0.0, 0.45)   # wider view showing the whole female cluster
+plt.legend()
+plt.savefig('f_hist_female_side.png')
+
+import matplotlib.pyplot as plt
+sc = pd.read_csv('d5.sexcheck', sep=r'\s+')
+plt.figure(figsize=(10,5))
+plt.hist(sc['F'], bins=60)
+plt.axvline(0.30, color='green', linestyle='--', label='current female-max')
+plt.axvline(0.45, color='red', linestyle='--', label='current male-min')
+plt.xlim(0.25, 0.55)
+plt.legend()
+plt.savefig('f_hist_zoomed.png')
+```
+
+Inspect f_vs_y.png/histograms (as you did earlier) to confirm the F/YCOUNT threshold PLINK used makes sense for your cohort before trusting STATUS; adjust with --sex-threshold-female/--sex-threshold-male if your data's cluster separation warrants a non-default cutoff, and document whichever threshold you land on.
+
+```
+plink --bfile d4 --impute-sex 0.31 0.43 --make-bed --out d5 --allow-no-sex
+# d6 is skipped because i am not removing any samples from sex disordancy
+```
+
+# 3. Relatedness — KING instead of PI_HAT
+```
+plink2 --bfile d5 --king-cutoff 0.177 --make-bed --out d7
+# 0.177 = standard KING cutoff for 2nd-degree-or-closer relatives; adjust if you want a different degree threshold
+echo "d7 (KING-pruned): $(wc -l < d7.fam) samples, $(wc -l < d7.bim) variants" >> ../qc_log/counts.txt
+```
+
+plink2 --king-cutoff writes d7.king.cutoff.out.id / .in.id listing who was removed/kept — keep these files for your methods reporting (replaces the old manual related_remove.txt).
+
+# 4. Variant-level QC — call rate, HWE, MAF
+```
+# differential missingness between cases/controls (catches genotyping artifacts)
+plink --bfile d7 --test-missing --out diffmiss_check --allow-no-sex
+awk '$5 < 1e-5' diffmiss_check.missing > diffmiss_fail.txt
+wc -l diffmiss_fail.txt
+```
+```
+plink --bfile d7 --exclude diffmiss_fail.txt --make-bed --out d8 --allow-no-sex
+
+# HWE filter in controls only
+plink --bfile d8 --filter-controls --hwe 1e-6 --write-snplist --out hwe_pass_controls
+plink --bfile d8 --extract hwe_pass_controls.snplist --make-bed --out d9 --allow-no-sex
+
+echo "d9 (HWE filtered): $(wc -l < d9.fam) samples, $(wc -l < d9.bim) variants" >> ../qc_log/counts.txt
+
+# MAF — real threshold this time, not 0.001 (which only removed monomorphic sites at your N)
+plink --bfile d9 --maf 0.01 --make-bed --out d10 --allow-no-sex
+echo "d10 (MAF>=0.01): $(wc -l < d10.fam) samples, $(wc -l < d10.bim) variants" >> ../qc_log/counts.txt
+```
+Adjust --maf up (0.05) if power calculations suggest 0.01 still leaves you underpowered — worth checking sample size vs. detectable MAF explicitly given your N.
+
+# 5. LD pruning + PCA (on final QC'd, pruned set — for both stratification-outlier removal and covariates)
+```
+plink --bfile d10 --indep-pairwise 50 5 0.2 --out prune --allow-no-sex
+plink --bfile d10 --extract prune.prune.in --make-bed --out d10_pruned --allow-no-sex
+
+plink2 --bfile d10_pruned --pca 10 --out pca
+```
+Inspect pca.eigenvec / a scree plot of pca.eigenval before deciding how many PCs to retain as covariates:
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+eigenval = pd.read_csv('pca.eigenval', header=None)
+plt.figure()
+plt.plot(range(1, len(eigenval)+1), eigenval[0], 'o-')
+plt.xlabel('PC'); plt.ylabel('Eigenvalue'); plt.title('PCA Scree Plot')
+plt.savefig('scree_plot.png')
+```
+
+# 6. Association testing — PCA-adjusted logistic regression, not --model
+All 10 PCs:
+```
+plink2 --bfile d10 --glm firth-fallback --covar pca.eigenvec --covar-name PC1-PC10 \
+    --ci 0.95 --out gwas_firth
+
+# extract clean additive results
+grep -w "ADD" gwas_firth.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk 18,18 > gwas_firth_sorted.txt
+head -20 gwas_firth_sorted.txt
+```
+
+Only 1 PC:
+```
+plink2 --bfile d10 --glm firth-fallback --covar pca.eigenvec --covar-name PC1 \
+    --ci 0.95 --out gwas_firth_pc1
+grep -w "ADD" gwas_firth_pc1.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk 18,18 > gwas_firth_pc1_sorted.txt
+head -20 gwas_firth_pc1_sorted.txt
+```
+
+"Association results were consistent across sensitivity analyses using either all 10 principal components or PC1 alone as covariates, with 11 of the top 20 loci overlapping between models (Table SX), supporting the robustness of these findings to the choice of population structure adjustment."
+
+I will use PC1-PC10 for the main results.
+If you have age or other covariates in phenotypes.tsv, add them: --covar combined_covars.txt --covar-name PC1-PC10,AGE,SEX.
+
+
+# 7 Compute λ_GC and generate QQ/Manhattan plots on this corrected file
+```
+# Load once, clean immediately
+df = pd.read_csv('gwas_firth.PHENO1.glm.logistic.hybrid', sep='\t', low_memory=False)
+df = df[df['TEST']=='ADD'].dropna(subset=['P'])
+df['#CHROM'] = df['#CHROM'].astype(str).str.strip()
+
+chisq = stats.chi2.isf(df['P'], 1)
+lambda_gc = np.median(chisq) / stats.chi2.ppf(0.5, 1)
+print(f"Lambda GC: {lambda_gc:.4f}")
+print(df['#CHROM'].unique())   # confirm clean, 23 unique values, no duplicates
+
+import matplotlib.pyplot as plt
+
+# QQ plot
+observed = -np.log10(np.sort(df['P']))
+expected = -np.log10(np.linspace(1/len(df), 1, len(df)))
+
+plt.figure(figsize=(6,6))
+plt.scatter(expected, observed, s=3, alpha=0.5)
+plt.plot([0, max(expected)], [0, max(expected)], 'r--')
+plt.xlabel('Expected -log10(p)')
+plt.ylabel('Observed -log10(p)')
+plt.title(f'QQ Plot (λ_GC = {lambda_gc:.3f})')
+plt.savefig('qq_plot_firth.png', dpi=150)
+
+# Manhattan plot
+df['CHR_NUM'] = df['#CHROM'].replace({'X': '23', 'Y': '24', 'MT': '25'})
+df['CHR_NUM'] = pd.to_numeric(df['CHR_NUM'], errors='coerce')
+df = df.dropna(subset=['CHR_NUM'])
+df['-logP'] = -np.log10(df['P'])
+
+plt.figure(figsize=(16,5))
+colors = ['#1f77b4','#ff7f0e']
+x_offset = 0
+xticks, xlabels = [], []
+for i, chrom in enumerate(sorted(df['CHR_NUM'].unique())):
+    sub = df[df['CHR_NUM']==chrom]
+    plt.scatter(sub['POS']+x_offset, sub['-logP'], c=colors[i%2], s=4)
+    xticks.append(x_offset + sub['POS'].median())
+    xlabels.append(str(int(chrom)) if chrom < 23 else {23:'X',24:'Y',25:'MT'}[chrom])
+    x_offset += sub['POS'].max()
+
+plt.axhline(-np.log10(5e-8), color='red', linestyle='--', label='Genome-wide (5e-8)')
+plt.axhline(-np.log10(1e-5), color='blue', linestyle=':', label='Suggestive (1e-5)')
+plt.xticks(xticks, xlabels, rotation=90)
+plt.ylabel('-log10(p)')
+plt.legend()
+plt.title('Manhattan Plot (Firth-corrected, PC1-10 adjusted)')
+plt.tight_layout()
+plt.savefig('manhattan_plot_firth.png', dpi=150)
+```
+
+# 8 - PC1 vs PC2 for case and control 0 
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# check the raw structure first — don't skip this
+with open('pca.eigenvec') as f:
+    print(f.readline())
+
+pca = pd.read_csv('pca.eigenvec', sep=r'\s+')
+pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
+print(pca.columns.tolist())
+print(pca.head())
+
+fam = pd.read_csv('d10.fam', sep=r'\s+', header=None,
+                   names=['FID','IID','PAT','MAT','SEX','PHENO'])
+
+merged = pca.merge(fam[['FID','IID','PHENO']], on=['FID','IID'])
+print(merged.shape)                       # sanity check row count — should be close to your sample N
+print(merged[['PC1','PC2','PHENO']].describe())   # confirm PC1/PC2 are small floats, PHENO is 1/2
+
+plt.figure(figsize=(7,6))
+for pheno, label, color in [(2,'Case','red'), (1,'Control','blue')]:
+    sub = merged[merged['PHENO']==pheno]
+    plt.scatter(sub['PC1'], sub['PC2'], label=label, alpha=0.6, c=color)
+plt.xlabel('PC1'); plt.ylabel('PC2'); plt.legend()
+plt.title('PCA colored by case/control status')
+plt.savefig('pca_case_control.png', dpi=150)
 ```
 
