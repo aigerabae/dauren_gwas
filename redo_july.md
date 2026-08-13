@@ -591,7 +591,9 @@ grep -w "ADD" gwas_firth.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk
 head -20 gwas_firth_sorted.txt
 ```
 
-```results (without outliers ethnic): - has the lower p value
+```results
+# (without outliers ethnic): -
+# has the lower p value
 14	102101959	rs10873531	A	G	Y	G	A	0.204023	N	ADD	174	0.249014	0.325198	0.131648	0.471013	-4.27507	1.91077e-05	.
 11	76661008	rs3740779	G	A	Y	A	G	0.422414	N	ADD	174	0.313745	0.277422	0.182153	0.540405	-4.17838	2.93594e-05	.
 10	127266130	rs10458718	G	T	Y	T	G	0.316092	N	ADD	174	0.276101	0.315273	0.148836	0.512187	-4.08214	4.46225e-05	.
