@@ -545,10 +545,45 @@ plt.xlabel('PC'); plt.ylabel('Eigenvalue'); plt.title('PCA Scree Plot')
 plt.savefig('scree_plot.png')
 ```
 
+# 5.5 PCA with other referent populations to see any outliers:
+```
+I used worldwide populations with tatars and kazakhs for WGS and infile
+plink --bfile ../d10 --bmerge merged6.bed merged6.bim merged6.fam --out together
+plink --bfile ../d10 --exclude together.missnp --make-bed --out d11
+plink --bfile d11 --bmerge merged6.bed merged6.bim merged6.fam --out together
+plink --bfile together --geno 0.05 --make-bed --out together2 --allow-no-sex
+plink --bfile together2 --mind 0.05 --make-bed --out together3 --allow-no-sex
+awk '{print $1, $2, $2, $2}' together3.fam > update_ids.txt
+plink2 --bfile together3 --update-ids update_ids.txt --make-bed --out together4
+
+plink2 --bfile together4 --pca 10 --out pca
+
+# metadata:
+cat infile.txt | awk '{print $1"\t"$2"\tprevious"}' > m1.txt
+cat ../d10.fam | awk '{print $1 "\tcurrent" "\tcurrent" }' > m2.txt
+cat m1.txt m2.txt > m3.txt
+cat m3.txt | awk '{print $1 "\t" tolower($2) "\t" tolower($3)}' > m4.txt
+
+awk '$2 ~ /^(azeri|buryat|hazara|polish|spanish|turkmen|ukrainian|uygur|tuvan|yakut|han_china|russian_central|altaian|french|german|kazakh|koryak|lezgin|pathan|tatar|current)$/' m4.txt > m5.txt
+take from m4 only those rows where column 2 is either: azeri, buryat, hazara, polish, spanish, turkmen, ukrainian, uygur, tuvan, yakut, han_china, russian_central, altaian, french, german, kazakh, koryak, lezgin, pathan, tatar, current
+
+python plot_eigenvec.py pca.eigenvec m5.txt
+```
+
+Samples: 
+206767120002_R10C01    206767120002_R10C01
+206667660001_R08C02    206667660001_R08C02
+207859430005_R10C01    207859430005_R10C01
+207859430006_R03C01    207859430006_R03C01
+206767120003_R10C02    206767120003_R10C02
+
+are deviating from the general kazakh population of the PCA.
+plink --bfile d10 --remove ref_pops/deviating_samples.txt --make-bed --out d11
+
 # 6. Association testing — PCA-adjusted logistic regression, not --model
 All 10 PCs:
 ```
-plink2 --bfile d10 --glm firth-fallback --covar pca.eigenvec --covar-name PC1-PC10 \
+plink2 --bfile d11 --glm firth-fallback --covar pca.eigenvec --covar-name PC1-PC10 \
     --ci 0.95 --out gwas_firth
 
 # extract clean additive results
@@ -556,9 +591,32 @@ grep -w "ADD" gwas_firth.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk
 head -20 gwas_firth_sorted.txt
 ```
 
+```results (without outliers ethnic): - has the lower p value
+14	102101959	rs10873531	A	G	Y	G	A	0.204023	N	ADD	174	0.249014	0.325198	0.131648	0.471013	-4.27507	1.91077e-05	.
+11	76661008	rs3740779	G	A	Y	A	G	0.422414	N	ADD	174	0.313745	0.277422	0.182153	0.540405	-4.17838	2.93594e-05	.
+10	127266130	rs10458718	G	T	Y	T	G	0.316092	N	ADD	174	0.276101	0.315273	0.148836	0.512187	-4.08214	4.46225e-05	.
+4	4367673	rs4330304	G	A	Y	A	G	0.267241N	ADD	174	3.3453	0.297719	1.86645	5.99589	4.05603	4.99143e-05	.
+11	80251941	rs1265425	T	C	Y	C	T	0.252874	N	ADD	174	0.300919	0.299591	0.167277	0.541331	-4.0085	6.11048e-05	.
+10	127267890	rs10430605	C	T	Y	T	C	0.307471	N	ADD	174	0.294167	0.309176	0.160481	0.539219	-3.95764	7.56925e-05	.
+5	175833369	rs1560036	G	A	Y	A	G	0.37931	N	ADD	174	2.72028	0.25716	1.64331	4.50306	3.89149	9.96305e-05	.
+14	102099124	rs7145597	G	A	Y	A	G	0.132184	N	ADD	174	0.199202	0.415492	0.0882319	0.449739	-3.8832	0.000103092	.
+19	18052445	rs62121092	G	A	Y	A	G	0.123563	N	ADD	174	0.196702	0.419391	0.0864613	0.447502	-3.8772	0.000105664	.
+X	2623614	rs3795179	A	G	Y	G	A	0.189655N	ADD	174	0.265494	0.345433	0.134903	0.522503-3.83913	0.000123473	.
+15	38901041	rs4923807	T	C	Y	C	T	0.362069	N	ADD	174	2.75426	0.268147	1.62839	4.65857	3.778340.000157876	.
+20	21828771	rs11696327	C	T	Y	T	C	0.247126	N	ADD	174	0.32719	0.299288	0.181989	0.588239-3.73291	0.000189279	.
+9	19514309	rs7022987	C	T	Y	T	C	0.293103	N	ADD	174	0.351397	0.282508	0.201988	0.611321	-3.70198	0.000213926	.
+4	121644543	rs17051378	T	C	Y	C	T	0.221264	N	ADD	174	0.325121	0.305955	0.178491	0.592208	-3.6723	0.00024038	.
+2	118692587	rs512681	C	A	Y	A	C	0.130058	N	ADD	173	4.63511	0.418143	2.04238	10.5192	3.667780.000244662	.
+9	18164547	rs10810914	A	G	Y	G	A	0.408046	N	ADD	174	0.359917	0.279479	0.208118	0.622437	-3.65638	0.000255804	.
+10	127250482	rs11016936	A	G	Y	G	A	0.32659	N	ADD	173	0.324013	0.308413	0.177028	0.59304	-3.6541	0.000258085	.
+10	127235987	rs2489425	G	A	Y	A	G	0.232759	N	ADD	174	3.15385	0.31678	1.69511	5.86793	3.62593	0.000287925	.
+2	154043812	rs1863086	T	G	Y	G	T	0.261494	N	ADD	174	2.8917	0.293516	1.62672	5.14038	3.617680.000297257	.
+10	62585408	10_62585408	CT	C	Y	C	CT	0.117816	N	ADD	174	4.64797	0.429709	2.00214	10.7903	3.575510.00034954	.
+```
+
 Only 1 PC:
 ```
-plink2 --bfile d10 --glm firth-fallback --covar pca.eigenvec --covar-name PC1 \
+plink2 --bfile d11 --glm firth-fallback --covar pca.eigenvec --covar-name PC1 \
     --ci 0.95 --out gwas_firth_pc1
 grep -w "ADD" gwas_firth_pc1.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk 18,18 > gwas_firth_pc1_sorted.txt
 head -20 gwas_firth_pc1_sorted.txt
