@@ -8,14 +8,14 @@
 ~~9) Filter/flag on WGT, SSR, and WTD - withdrawn, non-unique-mapping, and suspect variants~~  
 ~~10) remove full duplicates; identify duplicates by rsid and assign them different names if ref/alt/position are slightly different~~  
 ~~11) remove Ambiguous strand SNPs (A/T, C/G)~~  
-12) Genotyping call rate per sample (--mind) — you have this, keep 0.02–0.05.  
-13) Heterozygosity outliers — compute --het, exclude samples >±3-4 SD from mean heterozygosity (catches contamination/inbreeding artifacts). You're missing this entirely.  
-14) Sex check — apply a documented threshold (e.g., F<0.2 = female, F>0.8 = male for X-het; or YCOUNT-based cutoff from your histogram — pick the valley between the two clusters) and flag/exclude discordant sex.  
-15) Relatedness (--genome, KING, or plink2 --king-cutoff) — use a systematic pruning algorithm, not manual ID lists. Document the pi-hat threshold rationale (0.2 is reasonable for excluding 2nd-degree+).  
-16) Population structure / ancestry outliers — project your samples onto 1000 Genomes or a reference panel via PCA to identify and exclude ancestry outliers before running the GWAS PCA. This is very likely missing and is a common reviewer objection.  
-17) Call rate (--geno) — you have this.  
-18) HWE filter — apply in controls only, threshold typically --hwe 1e-6 (stricter for cases can be inappropriate since disease-associated loci may deviate from HWE by design).  
-19) MAF filter — 0.001 is very permissive; for a few hundred samples you have essentially no power to detect anything below MAF ~0.05 reliably. Consider MAF ≥0.01 or ≥0.05 for the primary GWAS and treat rarer variants separately with burden/SKAT-type tests if relevant; MAF 2×N alleles → minimum detectable non-zero MAF = 1/(2N)  
+~~12) Genotyping call rate per sample (--mind) — you have this, keep 0.02–0.05.~~  
+~~13) Heterozygosity outliers — compute --het, exclude samples >±3-4 SD from mean heterozygosity (catches contamination/inbreeding artifacts). You're missing this entirely.~~  
+~~14) Sex check — apply a documented threshold (e.g., F<0.2 = female, F>0.8 = male for X-het; or YCOUNT-based cutoff from your histogram — pick the valley between the two clusters) and flag/exclude discordant sex.~~  
+~~15) Relatedness (--genome, KING, or plink2 --king-cutoff) — use a systematic pruning algorithm, not manual ID lists. Document the pi-hat threshold rationale (0.2 is reasonable for excluding 2nd-degree+).~~  
+~~16) Population structure / ancestry outliers — project your samples onto 1000 Genomes or a reference panel via PCA to identify and exclude ancestry outliers before running the GWAS PCA. This is very likely missing and is a common reviewer objection.~~  
+~~17) Call rate (--geno) — you have this.~~  
+~~18) HWE filter — apply in controls only, threshold typically --hwe 1e-6 (stricter for cases can be inappropriate since disease-associated loci may deviate from HWE by design).~~  
+~~19) MAF filter — 0.001 is very permissive; for a few hundred samples you have essentially no power to detect anything below MAF ~0.05 reliably. Consider MAF ≥0.01 or ≥0.05 for the primary GWAS and treat rarer variants separately with burden/SKAT-type tests if relevant; MAF 2×N alleles → minimum detectable non-zero MAF = 1/(2N)~~  
 20) Differential missingness between cases/controls (--test-missing) — catches genotyping artifacts that masquerade as association signal.  
 21) Recompute PCA on the final QC'd, ancestry-outlier-pruned dataset (LD-prune first: --indep-pairwise 50 5 0.2).  
 22) Scree plot / eigenvalue inspection to decide how many PCs to retain as covariates (typically 5-10, but check where the elbow is).  
