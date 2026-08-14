@@ -591,6 +591,9 @@ grep -w "ADD" gwas_firth.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk
 head -20 gwas_firth_sorted.txt
 ```
 
+plink2 --bfile d11 --glm firth-fallback --covar pca.eigenvec --covar-name PC1-PC10 \
+    --ci 0.95 --out gwas_firth
+    
 ```results
 # (without outliers ethnic): -
 # has the lower p value
@@ -840,4 +843,137 @@ plt.legend()
 plt.savefig('power_curve_suggestive.png', dpi=150)
 ```
 
-Still need to consult on this plot.
+"The P values of Bonferroni corrected thresholds for suggestive, 5 and 1% genome-wide significant levels were 1, 0.05 and 0.01, respectively, divided by the number of SNPs used in the GWAS. The suggestive level was first proposed by Lander and Kruglyak [17] and represents the threshold where, under the null hypothesis, one false positive is expected per genome scan."
+
+So the suggestive line is calculated as the -log10( 1 / number of variants) = 5.2552725051
+
+Reference: Guo, Y., Huang, Y., Hou, L., Ma, J., Chen, C., Ai, H., ... & Ren, J. (2017). Genome-wide detection of genetic markers associated with growth and fatness in four pig populations using four approaches. Genetics Selection Evolution, 49(1), 21.
+
+Calculating power:
+```
+plink --bfile d10 --indep-pairwise 50 5 0.2 --out prune
+```
+Sum of "leaving" counts across chromosomes = 54,327 pruned-in variants (out of 181,595; matches 181595 - 127268 = 54327).
+Bonferroni threshold = 0.05 / 54327 = 9.20 × 10⁻⁷
+
+Method 2:
+```
+#!/bin/bash
+# export_dosages.sh
+# Run from ~/biostar/dauren_gwas/redo_july/plink/
+mkdir -p simpleM/dosages
+cd simpleM/dosages
+
+for chr in $(seq 1 22); do
+  plink2 --bfile ../../d10 \
+    --chr ${chr} \
+    --export A \
+    --out chr${chr}_dosage
+done
+
+echo "Done. Exported chr1-22, excluded chr23 (X) — handled separately."
+```
+
+```R
+#!/usr/bin/env Rscript
+# simpleM_autosomes.R
+# Effective number of independent tests (Li & Ji 2005 / Gao et al. 2008 simpleM),
+# windowed for tractability. Autosomes only (chr1-22); chrX excluded and
+# handled/reported separately due to het-haploid QC warning on chr23.
+# running from ~/biostar/dauren_gwas/redo_july/plink/simpleM
+
+suppressMessages(library(data.table))
+
+WINDOW_SIZE <- 2000
+OVERLAP     <- 500
+THRESHOLD   <- 0.995
+DOSAGE_DIR  <- "dosages"
+OUT_LOG     <- "simpleM_per_chr.csv"
+
+simpleM_one_chr <- function(dosage_file, window_size, overlap, threshold) {
+  geno <- fread(dosage_file, header = TRUE)
+  # plink2 --export A columns: FID IID PAT MAT SEX PHENOTYPE <SNP1_A> <SNP2_A> ...
+  meta_cols <- c("FID","IID","PAT","MAT","SEX","PHENOTYPE")
+  snp_cols <- setdiff(colnames(geno), meta_cols)
+  mat <- as.matrix(geno[, ..snp_cols])
+  mode(mat) <- "numeric"
+
+  n_snp <- ncol(mat)
+  if (n_snp < 2) return(list(m_eff = n_snp, n_snp = n_snp))
+
+  step <- window_size - overlap
+  starts <- seq(1, n_snp, by = step)
+
+  m_eff_total <- 0
+  for (s in starts) {
+    e <- min(s + window_size - 1, n_snp)
+    block <- mat[, s:e, drop = FALSE]
+
+    # drop monomorphic / all-NA columns within this window
+    keep <- apply(block, 2, function(x) {
+      v <- var(x, na.rm = TRUE)
+      !is.na(v) && v > 0
+    })
+    block <- block[, keep, drop = FALSE]
+    k_block <- ncol(block)
+    if (k_block < 2) {
+      m_eff_total <- m_eff_total + k_block * (step / window_size)
+      next
+    }
+
+    R <- suppressWarnings(cor(block, use = "pairwise.complete.obs"))
+    R[is.na(R)] <- 0
+    diag(R) <- 1
+
+    eig <- eigen(R, symmetric = TRUE, only.values = TRUE)$values
+    eig[eig < 0] <- 0  # guard tiny negative eigenvalues from numerical noise
+
+    cum_var <- cumsum(eig) / sum(eig)
+    k <- which(cum_var >= threshold)[1]
+    if (is.na(k)) k <- length(eig)
+
+    # scale by non-overlapping fraction of the window to avoid double-counting
+    # the boundary SNPs shared with the next window
+    weight <- if (e == n_snp) 1 else (step / window_size)
+    m_eff_total <- m_eff_total + k * weight
+  }
+
+  list(m_eff = m_eff_total, n_snp = n_snp)
+}
+
+results <- data.frame(chr = integer(), n_snp = integer(), m_eff = numeric())
+
+for (chr in 1:22) {
+  f <- file.path(DOSAGE_DIR, paste0("chr", chr, "_dosage.raw"))
+  if (!file.exists(f)) {
+    warning(paste("Missing file, skipping:", f))
+    next
+  }
+  cat("Processing chr", chr, "...\n")
+  r <- simpleM_one_chr(f, WINDOW_SIZE, OVERLAP, THRESHOLD)
+  results <- rbind(results, data.frame(chr = chr, n_snp = r$n_snp, m_eff = r$m_eff))
+  cat(sprintf("  chr%d: n_snp=%d, M_eff=%.1f\n", chr, r$n_snp, r$m_eff))
+}
+
+fwrite(results, OUT_LOG)
+
+total_snp  <- sum(results$n_snp)
+total_meff <- sum(results$m_eff)
+threshold_corrected <- 0.05 / total_meff
+
+cat("\n==================== SUMMARY (AUTOSOMES ONLY, chr1-22) ====================\n")
+cat(sprintf("Total SNPs (autosomal, post-QC):        %d\n", total_snp))
+cat(sprintf("Total effective independent tests:      %.1f\n", total_meff))
+cat(sprintf("simpleM-corrected significance threshold: %.3e\n", threshold_corrected))
+cat("chrX (23) excluded from this calculation — see README note.\n")
+cat("=============================================================================\n")
+
+summary_out <- data.frame(
+  metric = c("total_autosomal_snp", "total_M_eff", "corrected_threshold",
+             "window_size", "overlap", "cum_var_threshold"),
+  value  = c(total_snp, total_meff, threshold_corrected,
+             WINDOW_SIZE, OVERLAP, THRESHOLD)
+)
+fwrite(summary_out, "simpleM_summary.csv")
+cat("\nWrote simpleM_per_chr.csv and simpleM_summary.csv\n")
+```
