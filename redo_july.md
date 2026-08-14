@@ -526,15 +526,16 @@ echo "d10 (MAF>=0.01): $(wc -l < d10.fam) samples, $(wc -l < d10.bim) variants" 
 ```
 Adjust --maf up (0.05) if power calculations suggest 0.01 still leaves you underpowered — worth checking sample size vs. detectable MAF explicitly given your N.
 
-# 5. LD pruning + PCA (on final QC'd, pruned set — for both stratification-outlier removal and covariates)
+# 5. LD pruning + internal PCA + scree plot 
 ```
 plink --bfile d10 --indep-pairwise 50 5 0.2 --out prune --allow-no-sex
 plink --bfile d10 --extract prune.prune.in --make-bed --out d10_pruned --allow-no-sex
 
 plink2 --bfile d10_pruned --pca 10 --out pca
 ```
-Inspect pca.eigenvec / a scree plot of pca.eigenval before deciding how many PCs to retain as covariates:
 
+Inspect pca.eigenvec / a scree plot of pca.eigenval before deciding how many PCs to retain as covariates:
+making a scree plot
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -545,9 +546,40 @@ plt.xlabel('PC'); plt.ylabel('Eigenvalue'); plt.title('PCA Scree Plot')
 plt.savefig('scree_plot.png')
 ```
 
-# 5.5 PCA with other referent populations to see any outliers:
+# 6 Saving ancestry outliers according to the internal PCA:
+```python
+# Flag ancestry/genotyping outliers from PC1/PC2 — not case/control related, general outliers
+import pandas as pd
+pca = pd.read_csv('pca.eigenvec', sep=r'\s+')
+pca.columns = [c.lstrip('#') for c in pca.columns]
+
+mean1, sd1 = pca['PC1'].mean(), pca['PC1'].std()
+mean2, sd2 = pca['PC2'].mean(), pca['PC2'].std()
+
+outliers = pca[
+    (abs(pca['PC1'] - mean1) > 4*sd1) |
+    (abs(pca['PC2'] - mean2) > 4*sd2)
+]
+print(f"Ancestry/PCA outliers: {len(outliers)}")
+outliers[['FID','IID']].to_csv('pca_outliers.txt', sep='\t', index=False, header=False)
+print(outliers[['FID','IID','PC1','PC2']])
+```
+
+The outliers:
+Ancestry/PCA outliers: 6
+                     FID                  IID       PC1       PC2
+12   206667660001_R08C02  206667660001_R08C02 -0.469707 -0.445571 - yes
+57   206767120002_R08C01  206767120002_R08C01  0.050645  0.464647 - no
+61   206767120002_R10C01  206767120002_R10C01 -0.444747  0.453026 - yes
+131  207859430005_R10C01  207859430005_R10C01 -0.422022  0.045590 - yes
+133  207859430005_R11C01  207859430005_R11C01  0.061089  0.464488 - yes
+139  207859430006_R03C01  207859430006_R03C01 -0.355511  0.127528 - yes
+
+
+# 7 PCA with other referent populations to see any outliers:
 ```
 I used worldwide populations with tatars and kazakhs for WGS and infile
+cd ref_pops
 plink --bfile ../d10 --bmerge merged6.bed merged6.bim merged6.fam --out together
 plink --bfile ../d10 --exclude together.missnp --make-bed --out d11
 plink --bfile d11 --bmerge merged6.bed merged6.bim merged6.fam --out together
@@ -578,46 +610,198 @@ Samples:
 206767120003_R10C02    206767120003_R10C02
 
 are deviating from the general kazakh population of the PCA.
-plink --bfile d10 --remove ref_pops/deviating_samples.txt --make-bed --out d11
 
-# 6. Association testing — PCA-adjusted logistic regression, not --model
+I will add all 6 into ref_pops/deviating_samples.txt and delete all 6 shown in the internal PCA since 5/6 are obviously deviating and the other one is also not quite as close to the center of the cluster
+
+```
+plink --bfile d10 --remove ref_pops/deviating_samples.txt --make-bed --out d11
+```
+
+# 8 - PC1 vs PC2 for case and control 0 
+before removing 6 outliers:
+```bash
+plink2 --bfile d10 --pca 10 --out pca_179
+```
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# check the raw structure first — don't skip this
+with open('pca_179.eigenvec') as f:
+    print(f.readline())
+
+pca = pd.read_csv('pca.eigenvec', sep=r'\s+')
+pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
+print(pca.columns.tolist())
+print(pca.head())
+
+fam = pd.read_csv('d10.fam', sep=r'\s+', header=None,
+                   names=['FID','IID','PAT','MAT','SEX','PHENO'])
+
+merged = pca.merge(fam[['FID','IID','PHENO']], on=['FID','IID'])
+print(merged.shape)                       # sanity check row count — should be close to your sample N
+print(merged[['PC1','PC2','PHENO']].describe())   # confirm PC1/PC2 are small floats, PHENO is 1/2
+
+plt.figure(figsize=(7,6))
+for pheno, label, color in [(2,'Case','red'), (1,'Control','blue')]:
+    sub = merged[merged['PHENO']==pheno]
+    plt.scatter(sub['PC1'], sub['PC2'], label=label, alpha=0.6, c=color)
+plt.xlabel('PC1'); plt.ylabel('PC2'); plt.legend()
+plt.title('PCA colored by case/control status (179)')
+plt.savefig('pca_case_control_before.png', dpi=150)
+```
+
+After removing 6 outliers:
+```bash
+plink2 --bfile d11 --pca 10 --out pca_173
+```
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# check the raw structure first — don't skip this
+with open('pca.eigenvec') as f:
+    print(f.readline())
+
+pca = pd.read_csv('pca_173.eigenvec', sep=r'\s+')
+pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
+print(pca.columns.tolist())
+print(pca.head())
+
+fam = pd.read_csv('d11.fam', sep=r'\s+', header=None,
+                   names=['FID','IID','PAT','MAT','SEX','PHENO'])
+
+merged = pca.merge(fam[['FID','IID','PHENO']], on=['FID','IID'])
+print(merged.shape)                       # sanity check row count — should be close to your sample N
+print(merged[['PC1','PC2','PHENO']].describe())   # confirm PC1/PC2 are small floats, PHENO is 1/2
+
+plt.figure(figsize=(7,6))
+for pheno, label, color in [(2,'Case','red'), (1,'Control','blue')]:
+    sub = merged[merged['PHENO']==pheno]
+    plt.scatter(sub['PC1'], sub['PC2'], label=label, alpha=0.6, c=color)
+plt.xlabel('PC1'); plt.ylabel('PC2'); plt.legend()
+plt.title('PCA colored by case/control status (173)')
+plt.savefig('pca_case_control_after.png', dpi=150)
+```
+
+Checking if any more outliers want removal:
+```
+import pandas as pd
+
+pca = pd.read_csv('pca_173.eigenvec', sep=r'\s+')  # this is the N=173 recompute
+pca.columns = [c.lstrip('#') for c in pca.columns]
+
+mean1, sd1 = pca['PC1'].mean(), pca['PC1'].std()
+mean2, sd2 = pca['PC2'].mean(), pca['PC2'].std()
+outliers = pca[
+    (abs(pca['PC1'] - mean1) > 4*sd1) |
+    (abs(pca['PC2'] - mean2) > 4*sd2)
+]
+print(f"Round 2 outliers: {len(outliers)}")
+print(outliers[['FID','IID','PC1','PC2']])
+outliers[['FID','IID']].to_csv('pca_outliers_round2.txt', sep='\t', index=False, header=False)
+```
+
+Round 2 outliers: 1
+                     FID                  IID       PC1       PC2
+100  207859430002_R08C01  207859430002_R08C01  0.414859 -0.285921
+
+Another round:
+```
+echo "207859430002_R08C01    207859430002_R08C01" > remove_round2.txt
+plink --bfile d11 --remove remove_round2.txt --make-bed --out d12
+plink2 --bfile d12 --pca 10 --out pca_172
+```
+
+And checking if more outliers come out:
+```python
+import pandas as pd
+pca = pd.read_csv('pca_172.eigenvec', sep=r'\s+')  # this is the N=173 recompute
+pca.columns = [c.lstrip('#') for c in pca.columns]
+
+mean1, sd1 = pca['PC1'].mean(), pca['PC1'].std()
+mean2, sd2 = pca['PC2'].mean(), pca['PC2'].std()
+outliers = pca[
+    (abs(pca['PC1'] - mean1) > 4*sd1) |
+    (abs(pca['PC2'] - mean2) > 4*sd2)
+]
+print(f"Round 3 outliers: {len(outliers)}")
+print(outliers[['FID','IID','PC1','PC2']])
+outliers[['FID','IID']].to_csv('pca_outliers_round2.txt', sep='\t', index=False, header=False)
+```
+
+No more outliers. I will graph the PCA as well:
+```
+import pandas as pd
+import matplotlib.pyplot as plt
+
+pca = pd.read_csv('pca_172.eigenvec', sep=r'\s+')
+pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
+print(pca.columns.tolist())
+print(pca.head())
+
+fam = pd.read_csv('d11.fam', sep=r'\s+', header=None,
+                   names=['FID','IID','PAT','MAT','SEX','PHENO'])
+
+merged = pca.merge(fam[['FID','IID','PHENO']], on=['FID','IID'])
+print(merged.shape)                       # sanity check row count — should be close to your sample N
+print(merged[['PC1','PC2','PHENO']].describe())   # confirm PC1/PC2 are small floats, PHENO is 1/2
+
+plt.figure(figsize=(7,6))
+for pheno, label, color in [(2,'Case','red'), (1,'Control','blue')]:
+    sub = merged[merged['PHENO']==pheno]
+    plt.scatter(sub['PC1'], sub['PC2'], label=label, alpha=0.6, c=color)
+plt.xlabel('PC1'); plt.ylabel('PC2'); plt.legend()
+plt.title('PCA colored by case/control status (172)')
+plt.savefig('pca_case_control_after2.png', dpi=150)
+```
+
+Might want to double check whether the same samples that have sex imputation issues are the same ones that cluster are outliers in pca_case_control
+
+# 9. Association testing — PCA-adjusted logistic regression, not --model
 All 10 PCs:
 ```
-plink2 --bfile d11 --glm firth-fallback --covar pca.eigenvec --covar-name PC1-PC10 \
+plink2 --bfile d12 --glm firth-fallback --covar pca_172.eigenvec --covar-name PC1-PC10 \
     --ci 0.95 --out gwas_firth
 
 # extract clean additive results
 grep -w "ADD" gwas_firth.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk 18,18 > gwas_firth_sorted.txt
 head -20 gwas_firth_sorted.txt
 ```
-
-plink2 --bfile d11 --glm firth-fallback --covar pca.eigenvec --covar-name PC1-PC10 \
-    --ci 0.95 --out gwas_firth
     
 ```results
 # (without outliers ethnic): -
 # has the lower p value
-14	102101959	rs10873531	A	G	Y	G	A	0.204023	N	ADD	174	0.249014	0.325198	0.131648	0.471013	-4.27507	1.91077e-05	.
-11	76661008	rs3740779	G	A	Y	A	G	0.422414	N	ADD	174	0.313745	0.277422	0.182153	0.540405	-4.17838	2.93594e-05	.
-10	127266130	rs10458718	G	T	Y	T	G	0.316092	N	ADD	174	0.276101	0.315273	0.148836	0.512187	-4.08214	4.46225e-05	.
-4	4367673	rs4330304	G	A	Y	A	G	0.267241N	ADD	174	3.3453	0.297719	1.86645	5.99589	4.05603	4.99143e-05	.
-11	80251941	rs1265425	T	C	Y	C	T	0.252874	N	ADD	174	0.300919	0.299591	0.167277	0.541331	-4.0085	6.11048e-05	.
-10	127267890	rs10430605	C	T	Y	T	C	0.307471	N	ADD	174	0.294167	0.309176	0.160481	0.539219	-3.95764	7.56925e-05	.
-5	175833369	rs1560036	G	A	Y	A	G	0.37931	N	ADD	174	2.72028	0.25716	1.64331	4.50306	3.89149	9.96305e-05	.
-14	102099124	rs7145597	G	A	Y	A	G	0.132184	N	ADD	174	0.199202	0.415492	0.0882319	0.449739	-3.8832	0.000103092	.
-19	18052445	rs62121092	G	A	Y	A	G	0.123563	N	ADD	174	0.196702	0.419391	0.0864613	0.447502	-3.8772	0.000105664	.
-X	2623614	rs3795179	A	G	Y	G	A	0.189655N	ADD	174	0.265494	0.345433	0.134903	0.522503-3.83913	0.000123473	.
-15	38901041	rs4923807	T	C	Y	C	T	0.362069	N	ADD	174	2.75426	0.268147	1.62839	4.65857	3.778340.000157876	.
-20	21828771	rs11696327	C	T	Y	T	C	0.247126	N	ADD	174	0.32719	0.299288	0.181989	0.588239-3.73291	0.000189279	.
-9	19514309	rs7022987	C	T	Y	T	C	0.293103	N	ADD	174	0.351397	0.282508	0.201988	0.611321	-3.70198	0.000213926	.
-4	121644543	rs17051378	T	C	Y	C	T	0.221264	N	ADD	174	0.325121	0.305955	0.178491	0.592208	-3.6723	0.00024038	.
-2	118692587	rs512681	C	A	Y	A	C	0.130058	N	ADD	173	4.63511	0.418143	2.04238	10.5192	3.667780.000244662	.
-9	18164547	rs10810914	A	G	Y	G	A	0.408046	N	ADD	174	0.359917	0.279479	0.208118	0.622437	-3.65638	0.000255804	.
-10	127250482	rs11016936	A	G	Y	G	A	0.32659	N	ADD	173	0.324013	0.308413	0.177028	0.59304	-3.6541	0.000258085	.
-10	127235987	rs2489425	G	A	Y	A	G	0.232759	N	ADD	174	3.15385	0.31678	1.69511	5.86793	3.62593	0.000287925	.
-2	154043812	rs1863086	T	G	Y	G	T	0.261494	N	ADD	174	2.8917	0.293516	1.62672	5.14038	3.617680.000297257	.
-10	62585408	10_62585408	CT	C	Y	C	CT	0.117816	N	ADD	174	4.64797	0.429709	2.00214	10.7903	3.575510.00034954	.
+5	175833369	rs1560036	G	A	Y	A	G	0.380814	N	ADD	172	2.9215	0.261219	1.75088	4.87479	4.10421	4.057e-05	.
+4	4367673	rs4330304	G	A	Y	A	G	0.267442	N	ADD	172	3.28557	0.291881	1.85422	5.82185	4.07543	4.59299e-05	.
+11	80251941	rs1265425	T	C	Y	C	T	0.25	N	ADD	172	0.302031	0.296069	0.169059	0.539593	-4.04374	5.26062e-05	.
+19	18052445	rs62121092	G	A	Y	A	G	0.119186	N	ADD	172	0.187453	0.432414	0.0803196	0.437487	-3.87181	0.000108031	.
+10	6178762	rs11257090	A	G	Y	G	A	0.406433	N	ADD	171	0.371281	0.25796	0.223937	0.615572	-3.84088	0.000122592	.
+3	161256680	rs4470535	A	G	Y	G	A	0.318713	N	ADD	171	0.332545	0.287584	0.18926	0.584309	-3.82838	0.000128991	.
+4	87741379	rs2732204	G	A	Y	A	G	0.415698	N	ADD	172	2.47418	0.237696	1.55276	3.94238	3.81122	0.000138285	.
+21	41885483	rs1045071	T	G	Y	G	T	0.252907	N	ADD	172	3.39515	0.321484	1.80805	6.37538	3.8022	0.000143414	.
+9	18164547	rs10810914	A	G	Y	G	A	0.40407	N	ADD	172	0.346687	0.279786	0.200348	0.599918	-3.78623	0.000152953	.
+3	161296488	rs1478568	T	C	Y	C	T	0.319767	N	ADD	172	0.336694	0.287847	0.191522	0.591904	-3.7818	0.000155697	.
+11	2729473	rs170786	C	T	Y	T	C	0.238372	N	ADD	172	3.00231	0.290877	1.6977	5.30946	3.77954	0.000157118	.
+11	76661008	rs3740779	G	A	Y	A	G	0.427326	N	ADD	172	0.370141	0.263132	0.220998	0.619934	-3.77708	0.000158678	.
+3	161275966	rs6441370	T	C	Y	C	T	0.22619	N	ADD	168	0.276072	0.341244	0.141434	0.538877	-3.77177	0.000162092	.
+19	51532449	rs7259990	T	C	Y	C	T	0.424419	N	ADD	172	2.67529	0.261664	1.60193	4.46786	3.76077	0.00016939	.
+14	82139260	rs12883722	C	T	Y	T	C	0.125	N	ADD	172	0.203832	0.423409	0.0888928	0.46739	-3.75631	0.000172435	.
+15	38901041	rs4923807	T	C	Y	C	T	0.366279	N	ADD	172	2.65547	0.26034	1.59419	4.42327	3.75133	0.0001759	.
+13	99399080	rs12586091	T	C	Y	C	T	0.360465	N	ADD	172	2.80447	0.275012	1.63591	4.80774	3.74971	0.000177038	.
+10	122120697	rs11200411	C	T	Y	T	C	0.18314	N	ADD	172	3.69231	0.348791	1.86383	7.31458	3.74509	0.00018033	.
+3	161348506	rs336577	T	C	Y	C	T	0.215116	N	ADD	172	0.28244	0.340025	0.145043	0.549992	-3.71822	0.000200632	.
+3	161354266	rs336570	A	G	Y	G	A	0.215116	N	ADD	172	0.28244	0.340025	0.145043	0.549992	-3.71822	0.000200632	.
 ```
+
+
+
+Need to rerun everything after this stage because now i use 172 samples. P values weren't significant with any number of samples but at least there are clearly no outliers in PCA
+Current significant snp list is the final one so far.
+
+
 
 Only 1 PC:
 ```
@@ -633,9 +817,13 @@ I will use PC1-PC10 for the main results.
 If you have age or other covariates in phenotypes.tsv, add them: --covar combined_covars.txt --covar-name PC1-PC10,AGE,SEX.
 
 
-# 7 Compute λ_GC and generate QQ/Manhattan plots on this corrected file
+# 10 Compute λ_GC and generate QQ/Manhattan plots on this corrected file
 ```
 # Load once, clean immediately
+import pandas as pd
+from scipy import stats
+import numpy as np
+
 df = pd.read_csv('gwas_firth.PHENO1.glm.logistic.hybrid', sep='\t', low_memory=False)
 df = df[df['TEST']=='ADD'].dropna(subset=['P'])
 df['#CHROM'] = df['#CHROM'].astype(str).str.strip()
@@ -686,58 +874,7 @@ plt.tight_layout()
 plt.savefig('manhattan_plot_firth.png', dpi=150)
 ```
 
-# 8 - PC1 vs PC2 for case and control 0 
-```python
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# check the raw structure first — don't skip this
-with open('pca.eigenvec') as f:
-    print(f.readline())
-
-pca = pd.read_csv('pca.eigenvec', sep=r'\s+')
-pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
-print(pca.columns.tolist())
-print(pca.head())
-
-fam = pd.read_csv('d10.fam', sep=r'\s+', header=None,
-                   names=['FID','IID','PAT','MAT','SEX','PHENO'])
-
-merged = pca.merge(fam[['FID','IID','PHENO']], on=['FID','IID'])
-print(merged.shape)                       # sanity check row count — should be close to your sample N
-print(merged[['PC1','PC2','PHENO']].describe())   # confirm PC1/PC2 are small floats, PHENO is 1/2
-
-plt.figure(figsize=(7,6))
-for pheno, label, color in [(2,'Case','red'), (1,'Control','blue')]:
-    sub = merged[merged['PHENO']==pheno]
-    plt.scatter(sub['PC1'], sub['PC2'], label=label, alpha=0.6, c=color)
-plt.xlabel('PC1'); plt.ylabel('PC2'); plt.legend()
-plt.title('PCA colored by case/control status')
-plt.savefig('pca_case_control.png', dpi=150)
-```
-
-Might want to double check whether the same samples that have sex imputation issues are the same ones that cluster are outliers in pca_case_control
-
-# 9 Saving ancestry outliers:
-```python
-# Flag ancestry/genotyping outliers from PC1/PC2 — not case/control related, general outliers
-import pandas as pd
-pca = pd.read_csv('pca.eigenvec', sep=r'\s+')
-pca.columns = [c.lstrip('#') for c in pca.columns]
-
-mean1, sd1 = pca['PC1'].mean(), pca['PC1'].std()
-mean2, sd2 = pca['PC2'].mean(), pca['PC2'].std()
-
-outliers = pca[
-    (abs(pca['PC1'] - mean1) > 4*sd1) |
-    (abs(pca['PC2'] - mean2) > 4*sd2)
-]
-print(f"Ancestry/PCA outliers: {len(outliers)}")
-outliers[['FID','IID']].to_csv('pca_outliers.txt', sep='\t', index=False, header=False)
-print(outliers[['FID','IID','PC1','PC2']])
-```
-
-# 10 calculating effective number of tests
+# 11 calculating effective number of tests
 ```bash
 plink --bfile d10_pruned --indep-pairwise 50 5 0.2 --out prune_eff
 wc -l prune_eff.prune.in
@@ -754,14 +891,14 @@ print(f"Effective-test-adjusted threshold: {alpha_naive:.3e}")
 # Effective-test-adjusted threshold: 9.819e-07
 ```
 
-# 11 MAF table sanity check
+# 12 MAF table sanity check
 ```
 plink --bfile d10 --freq --out d10_freq
 awk 'NR==FNR{ids[$3]; next} FNR==1 || ($3 in ids)' \
     <(head -20 gwas_firth_sorted.txt) d10_freq.frq
 ```
 
-# 12 formal power calculation
+# 13 formal power calculation
 ```R
 install.packages("remotes")
 remotes::install_version("genpwr", version = "1.0.4", repos = "https://cloud.r-project.org")
@@ -977,3 +1114,7 @@ summary_out <- data.frame(
 fwrite(summary_out, "simpleM_summary.csv")
 cat("\nWrote simpleM_per_chr.csv and simpleM_summary.csv\n")
 ```
+
+simpleM-corrected threshold = 0.05 / 17,699.8 = 2.825 × 10⁻⁶
+
+The genome-wide significance threshold of 5×10⁻⁸ was derived for arrays with genome-wide backbone coverage approximating ~1,000,000 independent tests and is likely overly conservative for a targeted array with 181,595 variants. We therefore additionally computed an array-specific effective number of independent tests using the eigenvalue-based method of Li and Ji (2005), implemented following the windowed approach of Gao et al. (2008) (simpleM), applied to autosomal variants (n = 180,388; chromosome X excluded, see below). Pairwise LD correlation matrices were computed within sliding 2,000-SNP windows (500-SNP overlap), and the number of eigenvalues required to explain 99.5% of cumulative variance was summed across windows and chromosomes, yielding M_eff = 17,699.8 and a corrected significance threshold of 0.05/17,699.8 = 2.83×10⁻⁶. As a complementary, more conservative estimate, we also report a naive Bonferroni correction on the LD-pruned variant set (r² < 0.2; 54,327 variants; threshold = 9.20×10⁻⁷). No variant in this study reached significance under the genome-wide standard, the naive array-wide Bonferroni threshold, the LD-pruned threshold, or the simpleM-corrected threshold; the lowest observed p-value (2.6×10⁻⁵, rs[XXX]) falls short of even the least conservative of these. Chromosome X was excluded from the M_eff calculation due to [an unresolved excess of heterozygous-haploid genotype calls in male samples flagged during QC / pending pseudoautosomal-region splitting]; X-linked association results are reported [descriptively only / with a separate note], consistent with standard practice for excluding sex chromosomes from genome-wide M_eff estimation.
