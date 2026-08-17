@@ -588,7 +588,10 @@ plink --bfile together2 --mind 0.05 --make-bed --out together3 --allow-no-sex
 awk '{print $1, $2, $2, $2}' together3.fam > update_ids.txt
 plink2 --bfile together3 --update-ids update_ids.txt --make-bed --out together4
 
-plink2 --bfile together4 --pca 10 --out pca
+# pruning and PCA
+plink --bfile together4 --indep-pairwise 50 5 0.2 --out prune --allow-no-sex
+plink --bfile together4 --extract prune.prune.in --make-bed --out together4_pruned --allow-no-sex
+plink2 --bfile together4_pruned --pca 10 --out pca
 
 # metadata:
 cat infile.txt | awk '{print $1"\t"$2"\tprevious"}' > m1.txt
@@ -615,12 +618,16 @@ I will add all 6 into ref_pops/deviating_samples.txt and delete all 6 shown in t
 
 ```
 plink --bfile d10 --remove ref_pops/deviating_samples.txt --make-bed --out d11
+
+# pruning for PCA
+plink --bfile d11 --indep-pairwise 50 5 0.2 --out prune --allow-no-sex
+plink --bfile d11 --extract prune.prune.in --make-bed --out d11_pruned --allow-no-sex
 ```
 
 # 8 - PC1 vs PC2 for case and control 0 
 before removing 6 outliers:
 ```bash
-plink2 --bfile d10 --pca 10 --out pca_179
+plink2 --bfile d10_pruned --pca 10 --out pca_179
 ```
 
 ```python
@@ -631,7 +638,7 @@ import matplotlib.pyplot as plt
 with open('pca_179.eigenvec') as f:
     print(f.readline())
 
-pca = pd.read_csv('pca.eigenvec', sep=r'\s+')
+pca = pd.read_csv('pca_179.eigenvec', sep=r'\s+')
 pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
 print(pca.columns.tolist())
 print(pca.head())
@@ -654,16 +661,12 @@ plt.savefig('pca_case_control_before.png', dpi=150)
 
 After removing 6 outliers:
 ```bash
-plink2 --bfile d11 --pca 10 --out pca_173
+plink2 --bfile d11_pruned --pca 10 --out pca_173
 ```
 
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
-
-# check the raw structure first — don't skip this
-with open('pca.eigenvec') as f:
-    print(f.readline())
 
 pca = pd.read_csv('pca_173.eigenvec', sep=r'\s+')
 pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
@@ -704,21 +707,36 @@ print(outliers[['FID','IID','PC1','PC2']])
 outliers[['FID','IID']].to_csv('pca_outliers_round2.txt', sep='\t', index=False, header=False)
 ```
 
-Round 2 outliers: 1
+Round 2 outliers: 5
                      FID                  IID       PC1       PC2
-100  207859430002_R08C01  207859430002_R08C01  0.414859 -0.285921
+85   206767120003_R12C01  206767120003_R12C01 -0.081173 -0.428174
+100  207859430002_R08C01  207859430002_R08C01  0.464879  0.373393
+119  207859430005_R05C02  207859430005_R05C02  0.420347 -0.384214
+149  207859430006_R12C02  207859430006_R12C02 -0.097316 -0.421918
+166  207859430008_R09C02  207859430008_R09C02  0.436728  0.123302
+
 
 Another round:
 ```
-echo "207859430002_R08C01    207859430002_R08C01" > remove_round2.txt
+echo "206767120003_R12C01  206767120003_R12C01
+207859430002_R08C01  207859430002_R08C01
+207859430005_R05C02  207859430005_R05C02
+207859430006_R12C02  207859430006_R12C02
+207859430008_R09C02  207859430008_R09C02" > remove_round2.txt
 plink --bfile d11 --remove remove_round2.txt --make-bed --out d12
-plink2 --bfile d12 --pca 10 --out pca_172
+
+# pruning for PCA
+plink --bfile d12 --indep-pairwise 50 5 0.2 --out prune --allow-no-sex
+plink --bfile d12 --extract prune.prune.in --make-bed --out d12_pruned --allow-no-sex
+
+# pca
+plink2 --bfile d12_pruned --pca 10 --out pca_168
 ```
 
 And checking if more outliers come out:
 ```python
 import pandas as pd
-pca = pd.read_csv('pca_172.eigenvec', sep=r'\s+')  # this is the N=173 recompute
+pca = pd.read_csv('pca_168.eigenvec', sep=r'\s+')  # this is the N=173 recompute
 pca.columns = [c.lstrip('#') for c in pca.columns]
 
 mean1, sd1 = pca['PC1'].mean(), pca['PC1'].std()
@@ -732,17 +750,33 @@ print(outliers[['FID','IID','PC1','PC2']])
 outliers[['FID','IID']].to_csv('pca_outliers_round2.txt', sep='\t', index=False, header=False)
 ```
 
-No more outliers. I will graph the PCA as well:
+Round 3 outliers: 4
+                     FID                  IID       PC1       PC2
+54   206767120002_R07C01  206767120002_R07C01 -0.553443 -0.133591
+70   206767120003_R04C01  206767120003_R04C01 -0.319814 -0.066294
+115  207859430005_R04C02  207859430005_R04C02 -0.131545 -0.362335
+164  207859430008_R11C01  207859430008_R11C01 -0.276053  0.339133
+
+I will remove them again:
+```
+echo "206767120002_R07C01    206767120002_R07C01
+206767120003_R04C01    206767120003_R04C01
+207859430005_R04C02    207859430005_R04C02
+207859430008_R11C01    207859430008_R11C01" > remove_round3.txt
+plink --bfile d12 --remove remove_round3.txt --make-bed --out d13
+```
+
+Visualizing after round 2 (before round 3):
 ```
 import pandas as pd
 import matplotlib.pyplot as plt
 
-pca = pd.read_csv('pca_172.eigenvec', sep=r'\s+')
+pca = pd.read_csv('pca_168.eigenvec', sep=r'\s+')
 pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
 print(pca.columns.tolist())
 print(pca.head())
 
-fam = pd.read_csv('d11.fam', sep=r'\s+', header=None,
+fam = pd.read_csv('d12.fam', sep=r'\s+', header=None,
                    names=['FID','IID','PAT','MAT','SEX','PHENO'])
 
 merged = pca.merge(fam[['FID','IID','PHENO']], on=['FID','IID'])
@@ -754,16 +788,85 @@ for pheno, label, color in [(2,'Case','red'), (1,'Control','blue')]:
     sub = merged[merged['PHENO']==pheno]
     plt.scatter(sub['PC1'], sub['PC2'], label=label, alpha=0.6, c=color)
 plt.xlabel('PC1'); plt.ylabel('PC2'); plt.legend()
-plt.title('PCA colored by case/control status (172)')
+plt.title('PCA colored by case/control status (168)')
 plt.savefig('pca_case_control_after2.png', dpi=150)
+```
+
+Running PCA on round3:
+```
+# pruning for PCA
+plink --bfile d13 --indep-pairwise 50 5 0.2 --out prune --allow-no-sex
+plink --bfile d13 --extract prune.prune.in --make-bed --out d13_pruned --allow-no-sex
+
+# pca
+plink2 --bfile d13_pruned --pca 10 --out pca_164
+```
+
+Calculating if any more outliers are left after round 3:
+```
+import pandas as pd
+pca = pd.read_csv('pca_164.eigenvec', sep=r'\s+')  # this is the N=173 recompute
+pca.columns = [c.lstrip('#') for c in pca.columns]
+
+mean1, sd1 = pca['PC1'].mean(), pca['PC1'].std()
+mean2, sd2 = pca['PC2'].mean(), pca['PC2'].std()
+outliers = pca[
+    (abs(pca['PC1'] - mean1) > 4*sd1) |
+    (abs(pca['PC2'] - mean2) > 4*sd2)
+]
+print(f"Round 4 outliers: {len(outliers)}")
+print(outliers[['FID','IID','PC1','PC2']])
+outliers[['FID','IID']].to_csv('pca_outliers_round3.txt', sep='\t', index=False, header=False)
+```
+
+No more outliers. Visualizing:
+```
+import pandas as pd
+import matplotlib.pyplot as plt
+
+pca = pd.read_csv('pca_164.eigenvec', sep=r'\s+')
+pca.columns = [c.lstrip('#') for c in pca.columns]   # strip leading '#' from '#FID' if present
+print(pca.columns.tolist())
+print(pca.head())
+
+fam = pd.read_csv('d13.fam', sep=r'\s+', header=None,
+                   names=['FID','IID','PAT','MAT','SEX','PHENO'])
+
+merged = pca.merge(fam[['FID','IID','PHENO']], on=['FID','IID'])
+print(merged.shape)                       # sanity check row count — should be close to your sample N
+print(merged[['PC1','PC2','PHENO']].describe())   # confirm PC1/PC2 are small floats, PHENO is 1/2
+
+plt.figure(figsize=(7,6))
+for pheno, label, color in [(2,'Case','red'), (1,'Control','blue')]:
+    sub = merged[merged['PHENO']==pheno]
+    plt.scatter(sub['PC1'], sub['PC2'], label=label, alpha=0.6, c=color)
+plt.xlabel('PC1'); plt.ylabel('PC2'); plt.legend()
+plt.title('PCA colored by case/control status (168)')
+plt.savefig('pca_case_control_after3.png', dpi=150)
 ```
 
 Might want to double check whether the same samples that have sex imputation issues are the same ones that cluster are outliers in pca_case_control
 
+re-making scree plot with 164 samples:
+```
+Inspect pca.eigenvec / a scree plot of pca.eigenval before deciding how many PCs to retain as covariates:
+making a scree plot
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+eigenval = pd.read_csv('pca_164.eigenval', header=None)
+plt.figure()
+plt.plot(range(1, len(eigenval)+1), eigenval[0], 'o-')
+plt.xlabel('PC'); plt.ylabel('Eigenvalue'); plt.title('PCA Scree Plot')
+plt.savefig('scree_plot2.png')
+```
+
+Following outlier removal, the PCA eigenvalue spectrum showed no discrete elbow (Supplementary Figure X), consistent with a homogeneous residual population; association analyses were therefore performed adjusting for [N] PCs, with results robust to inclusion of up to 10 PCs (Supplementary Table Y)."
+
 # 9. Association testing — PCA-adjusted logistic regression, not --model
 All 10 PCs:
 ```
-plink2 --bfile d12 --glm firth-fallback --covar pca_172.eigenvec --covar-name PC1-PC10 \
+plink2 --bfile d13 --glm firth-fallback --covar pca_164.eigenvec --covar-name PC1-PC10 \
     --ci 0.95 --out gwas_firth
 
 # extract clean additive results
@@ -772,50 +875,93 @@ head -20 gwas_firth_sorted.txt
 ```
     
 ```results
-# (without outliers ethnic): -
-# has the lower p value
-5	175833369	rs1560036	G	A	Y	A	G	0.380814	N	ADD	172	2.9215	0.261219	1.75088	4.87479	4.10421	4.057e-05	.
-4	4367673	rs4330304	G	A	Y	A	G	0.267442	N	ADD	172	3.28557	0.291881	1.85422	5.82185	4.07543	4.59299e-05	.
-11	80251941	rs1265425	T	C	Y	C	T	0.25	N	ADD	172	0.302031	0.296069	0.169059	0.539593	-4.04374	5.26062e-05	.
-19	18052445	rs62121092	G	A	Y	A	G	0.119186	N	ADD	172	0.187453	0.432414	0.0803196	0.437487	-3.87181	0.000108031	.
-10	6178762	rs11257090	A	G	Y	G	A	0.406433	N	ADD	171	0.371281	0.25796	0.223937	0.615572	-3.84088	0.000122592	.
-3	161256680	rs4470535	A	G	Y	G	A	0.318713	N	ADD	171	0.332545	0.287584	0.18926	0.584309	-3.82838	0.000128991	.
-4	87741379	rs2732204	G	A	Y	A	G	0.415698	N	ADD	172	2.47418	0.237696	1.55276	3.94238	3.81122	0.000138285	.
-21	41885483	rs1045071	T	G	Y	G	T	0.252907	N	ADD	172	3.39515	0.321484	1.80805	6.37538	3.8022	0.000143414	.
-9	18164547	rs10810914	A	G	Y	G	A	0.40407	N	ADD	172	0.346687	0.279786	0.200348	0.599918	-3.78623	0.000152953	.
-3	161296488	rs1478568	T	C	Y	C	T	0.319767	N	ADD	172	0.336694	0.287847	0.191522	0.591904	-3.7818	0.000155697	.
-11	2729473	rs170786	C	T	Y	T	C	0.238372	N	ADD	172	3.00231	0.290877	1.6977	5.30946	3.77954	0.000157118	.
-11	76661008	rs3740779	G	A	Y	A	G	0.427326	N	ADD	172	0.370141	0.263132	0.220998	0.619934	-3.77708	0.000158678	.
-3	161275966	rs6441370	T	C	Y	C	T	0.22619	N	ADD	168	0.276072	0.341244	0.141434	0.538877	-3.77177	0.000162092	.
-19	51532449	rs7259990	T	C	Y	C	T	0.424419	N	ADD	172	2.67529	0.261664	1.60193	4.46786	3.76077	0.00016939	.
-14	82139260	rs12883722	C	T	Y	T	C	0.125	N	ADD	172	0.203832	0.423409	0.0888928	0.46739	-3.75631	0.000172435	.
-15	38901041	rs4923807	T	C	Y	C	T	0.366279	N	ADD	172	2.65547	0.26034	1.59419	4.42327	3.75133	0.0001759	.
-13	99399080	rs12586091	T	C	Y	C	T	0.360465	N	ADD	172	2.80447	0.275012	1.63591	4.80774	3.74971	0.000177038	.
-10	122120697	rs11200411	C	T	Y	T	C	0.18314	N	ADD	172	3.69231	0.348791	1.86383	7.31458	3.74509	0.00018033	.
-3	161348506	rs336577	T	C	Y	C	T	0.215116	N	ADD	172	0.28244	0.340025	0.145043	0.549992	-3.71822	0.000200632	.
-3	161354266	rs336570	A	G	Y	G	A	0.215116	N	ADD	172	0.28244	0.340025	0.145043	0.549992	-3.71822	0.000200632	.
+5	175833369	rs1560036	G	A	Y	A	G	0.384146	N	ADD	164	3.35783	0.277933	1.94752	5.78943	4.358221.31122e-05	.
+3	95829911	rs13081814	A	G	Y	G	A	0.219512	N	ADD	164	4.30402	0.346498	2.1824	8.48817	4.212292.52794e-05	.
+X	2623614	rs3795179	A	G	Y	G	A	0.20122NADD	164	0.210716	0.382377	0.0995906	0.445839	-4.07253	4.65057e-05	.
+11	80251941	rs1265425	T	C	Y	C	T	0.25	N	ADD	164	0.273695	0.318485	0.146613	0.510931	-4.06845	4.73273e-05	.
+4	4367673	rs4330304	G	A	Y	A	G	0.27439NADD	164	3.64393	0.320846	1.94297	6.83401	4.03016	5.57379e-05	.
+14	102101959	rs10873531	A	G	Y	G	A	0.198171	N	ADD	164	0.256903	0.339516	0.13206	0.499765-4.00292	6.25657e-05	.
+19	18052445	rs62121092	G	A	Y	A	G	0.121951	N	ADD	164	0.174404	0.44975	0.0722317	0.421098-3.88301	0.000103171	.
+15	38901041	rs4923807	T	C	Y	C	T	0.375	N	ADD	164	2.93181	0.285189	1.67642	5.1273	3.771610.000162199	.
+9	86824392	rs4878016	G	A	Y	A	G	0.289634	N	ADD	164	0.305911	0.314244	0.165238	0.566343	-3.76924	0.000163744	.
+10	93022978	rs835259	G	T	Y	T	G	0.16358	N	ADD	162	4.35175	0.39721	1.99783	9.47915	3.70227	0.000213681	.
+3	190574239	rs3773971	A	G	Y	G	A	0.204268	N	ADD	164	3.99861	0.374876	1.91785	8.33688	3.697080.000218092	.
+14	102099124	rs7145597	G	A	Y	A	G	0.131098	N	ADD	164	0.206063	0.42752	0.0891445	0.476328-3.69473	0.000220119	.
+15	57316925	rs11071311	C	T	Y	T	C	0.439024	N	ADD	164	0.36001	0.278481	0.208579	0.621381-3.66855	0.000243928	.
+2	136105973	2_136105973	C	A	Y	A	C	0.0864198	N	ADD	162	7.71144	0.557101	2.5878	22.97953.66667	0.000245728	.
+3	70963429	rs3773494	A	G	Y	G	A	0.310976	N	ADD	164	3.00408	0.301434	1.66391	5.42367	3.649130.000263132	.
+3	161275966	rs6441370	T	C	Y	C	T	0.21875	N	ADD	160	0.275161	0.354826	0.137265	0.551588	-3.63671	0.000276138	.
+2	118692587	rs512681	C	A	Y	A	C	0.134969	N	ADD	163	4.66735	0.423727	2.0342	10.709	3.635810.000277105	.
+14	95858869	rs1885152	C	T	Y	T	C	0.310976	N	ADD	164	2.80459	0.28452	1.60578	4.89839	3.62455	0.00028946	.
+2	129887241	rs4662668	A	G	Y	G	A	0.307927	N	ADD	164	2.94994	0.300613	1.63656	5.31736	3.598590.000319945	.
+13	99399080	rs12586091	T	C	Y	C	T	0.362805	N	ADD	164	2.68696	0.275131	1.567	4.60737	3.592510.000327514	.
 ```
-
-
-
-Need to rerun everything after this stage because now i use 172 samples. P values weren't significant with any number of samples but at least there are clearly no outliers in PCA
-Current significant snp list is the final one so far.
-
-
 
 Only 1 PC:
 ```
-plink2 --bfile d11 --glm firth-fallback --covar pca.eigenvec --covar-name PC1 \
+plink2 --bfile d13 --glm firth-fallback --covar pca_164.eigenvec --covar-name PC1 \
     --ci 0.95 --out gwas_firth_pc1
 grep -w "ADD" gwas_firth_pc1.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk 18,18 > gwas_firth_pc1_sorted.txt
 head -20 gwas_firth_pc1_sorted.txt
 ```
 
-"Association results were consistent across sensitivity analyses using either all 10 principal components or PC1 alone as covariates, with 11 of the top 20 loci overlapping between models (Table SX), supporting the robustness of these findings to the choice of population structure adjustment."
+```results
+5	175833369	rs1560036	G	A	Y	A	G	0.384146	N	ADD	164	2.96919	0.258143	1.79022	4.92459	4.215842.48845e-05	.
+3	95829911	rs13081814	A	G	Y	G	A	0.219512	N	ADD	164	3.32509	0.311544	1.80558	6.12337	3.856590.000114981	.
+19	18052445	rs62121092	G	A	Y	A	G	0.121951	N	ADD	164	0.203762	0.419376	0.0895671	0.463549	-3.79327	0.000148679	.
+15	38901041	rs4923807	T	C	Y	C	T	0.375	N	ADD	164	2.6218	0.254792	1.59119	4.31996	3.782940.000154988	.
+10	15029619	rs11818063	C	T	Y	T	C	0.35061	N	ADD	164	2.7835	0.272245	1.63251	4.74599	3.760250.000169742	.
+11	76661008	rs3740779	G	A	Y	A	G	0.426829	N	ADD	164	0.3888	0.254252	0.236215	0.639951-3.71556	0.000202756	.
+3	161275966	rs6441370	T	C	Y	C	T	0.21875	N	ADD	160	0.297926	0.328902	0.156368	0.567637	-3.68167	0.000231707	.
+4	4367673	rs4330304	G	A	Y	A	G	0.27439NADD	164	2.73778	0.273682	1.60118	4.68119	3.67999	0.000233243	.
+22	37129691	rs84460	A	G	Y	G	A	0.359756N	ADD	164	2.52254	0.252571	1.53762	4.13835	3.6634	0.00024889	.
+X	2623614	rs3795179	A	G	Y	G	A	0.20122NADD	164	0.302967	0.32616	0.15987	0.574148	-3.66118	0.000251056	.
+14	95858869	rs1885152	C	T	Y	T	C	0.310976	N	ADD	164	2.64824	0.266099	1.572	4.46129	3.659890.000252325	.
+11	80251941	rs1265425	T	C	Y	C	T	0.25	N	ADD	164	0.354534	0.283351	0.203455	0.617798	-3.6596	0.000252608	.
+10	93022978	rs835259	G	T	Y	T	G	0.16358	N	ADD	162	3.66841	0.358321	1.8175	7.40425	3.627360.000286329	.
+14	102101959	rs10873531	A	G	Y	G	A	0.198171	N	ADD	164	0.333806	0.305711	0.183347	0.607737	-3.589	0.00033195	.
+10	122120697	rs11200411	C	T	Y	T	C	0.185976	N	ADD	164	3.24122	0.328348	1.70301	6.16877	3.581410.000341739	.
+16	8402882	rs12597409	A	G	Y	G	A	0.265244N	ADD	164	0.370747	0.277858	0.215062	0.639133-3.57101	0.000355602	.
+3	161256680	rs4470535	A	G	Y	G	A	0.315951	N	ADD	163	0.376216	0.274727	0.219578	0.644593	-3.55841	0.000373107	.
+3	54271643	rs7615792	G	A	Y	A	G	0.237805	N	ADD	164	0.35973	0.289553	0.203943	0.634518-3.53097	0.000414034	.
+11	61000572	rs2905517	A	G	Y	G	A	0.243902	N	ADD	164	2.79362	0.291386	1.57812	4.94534	3.525690.000422375	.
+3	161296488	rs1478568	T	C	Y	C	T	0.317073	N	ADD	164	0.3818	0.274546	0.222916	0.653927-3.5071	0.000453017	.
+```
 
-I will use PC1-PC10 for the main results.
-If you have age or other covariates in phenotypes.tsv, add them: --covar combined_covars.txt --covar-name PC1-PC10,AGE,SEX.
+Ancestry outliers were identified by iterative PCA: at each round, PCA was performed on an LD-pruned variant set (r²<0.2, 50-SNP window, 5-SNP step), and samples deviating more than 4 SD from the cohort mean on PC1 or PC2 were flagged and removed. This process was repeated, re-pruning and recomputing PCA at each round, until no further outliers were detected (three rounds; N=179→173→168→164). The resulting eigenvalue spectrum showed no discrete elbow (Supplementary Figure X), consistent with a genetically homogeneous residual cohort. 
 
+Calculating for PC1-3:
+```
+plink2 --bfile d13 --glm firth-fallback --covar pca_164.eigenvec --covar-name PC1-PC3 \
+    --ci 0.95 --out gwas_firth_pc1-3
+grep -w "ADD" gwas_firth_pc1-3.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk 18,18 > gwas_firth_pc1-3_sorted.txt
+head -20 gwas_firth_pc1-3_sorted.txt
+```
+
+```results:
+5	175833369	rs1560036	G	A	Y	A	G	0.384146	N	ADD	164	2.97995	0.258623	1.79501	4.94708	4.221992.42154e-05	.
+3	95829911	rs13081814	A	G	Y	G	A	0.219512	N	ADD	164	3.36356	0.313075	1.821	6.21283	3.874470.000106856	.
+10	15029619	rs11818063	C	T	Y	T	C	0.35061	N	ADD	164	2.84042	0.274188	1.65956	4.86152	3.807420.000140422	.
+15	38901041	rs4923807	T	C	Y	C	T	0.375	N	ADD	164	2.69802	0.260745	1.61845	4.49772	3.806470.000140967	.
+19	18052445	rs62121092	G	A	Y	A	G	0.121951	N	ADD	164	0.201049	0.422293	0.087871	0.460001	-3.7988	0.0001454	.
+3	161275966	rs6441370	T	C	Y	C	T	0.21875	N	ADD	160	0.278744	0.336283	0.144199	0.538827	-3.79878	0.000145412	.
+11	76661008	rs3740779	G	A	Y	A	G	0.426829	N	ADD	164	0.38161	0.25671	0.230732	0.631148	-3.75271	0.000174935	.
+10	93022978	rs835259	G	T	Y	T	G	0.16358	N	ADD	162	3.94774	0.368904	1.91574	8.13505	3.722230.000197474	.
+3	161256680	rs4470535	A	G	Y	G	A	0.315951	N	ADD	163	0.349829	0.2836	0.200657	0.609897-3.70349	0.000212653	.
+14	95858869	rs1885152	C	T	Y	T	C	0.310976	N	ADD	164	2.69362	0.267924	1.59323	4.55401	3.698380.000216977	.
+4	4367673	rs4330304	G	A	Y	A	G	0.27439NADD	164	2.72929	0.274199	1.5946	4.67141	3.66173	0.000250517	.
+X	2623614	rs3795179	A	G	Y	G	A	0.20122NADD	164	0.299246	0.329751	0.156799	0.571101	-3.65879	0.00025341	.
+11	80251941	rs1265425	T	C	Y	C	T	0.25	N	ADD	164	0.350163	0.288119	0.199077	0.61591	-3.6421	0.000270428	.
+3	161296488	rs1478568	T	C	Y	C	T	0.317073	N	ADD	164	0.359573	0.281721	0.207007	0.624581	-3.63067	0.000282686	.
+20	11812314	rs6134366	G	A	Y	A	G	0.141104	N	ADD	163	0.250252	0.382764	0.118187	0.529892	-3.61917	0.000295552	.
+22	37129691	rs84460	A	G	Y	G	A	0.359756N	ADD	164	2.54252	0.258193	1.53281	4.21733	3.61417	0.000301306	.
+3	161232242	rs4518145	C	T	Y	T	C	0.22561	N	ADD	164	0.307669	0.326241	0.162325	0.583151	-3.61306	0.000302601	.
+16	8402882	rs12597409	A	G	Y	G	A	0.265244N	ADD	164	0.364969	0.279809	0.210903	0.631582-3.60226	0.000315468	.
+3	161348506	rs336577	T	C	Y	C	T	0.207317	N	ADD	164	0.303414	0.331671	0.158386	0.581238	-3.59591	0.000323266	.
+3	161354266	rs336570	A	G	Y	G	A	0.207317	N	ADD	164	0.303414	0.331671	0.158386	0.581238	-3.59591	0.000323266	.
+```
+
+I will stick with PC-PC3 because it has a bir more variation captured than PC1 but holds more degrees of freedom than PC1-PC10
 
 # 10 Compute λ_GC and generate QQ/Manhattan plots on this corrected file
 ```
@@ -824,7 +970,7 @@ import pandas as pd
 from scipy import stats
 import numpy as np
 
-df = pd.read_csv('gwas_firth.PHENO1.glm.logistic.hybrid', sep='\t', low_memory=False)
+df = pd.read_csv('gwas_firth_pc1-3.PHENO1.glm.logistic.hybrid', sep='\t', low_memory=False)
 df = df[df['TEST']=='ADD'].dropna(subset=['P'])
 df['#CHROM'] = df['#CHROM'].astype(str).str.strip()
 
@@ -876,7 +1022,7 @@ plt.savefig('manhattan_plot_firth.png', dpi=150)
 
 # 11 calculating effective number of tests
 ```bash
-plink --bfile d10_pruned --indep-pairwise 50 5 0.2 --out prune_eff
+plink --bfile d13_pruned --indep-pairwise 50 5 0.2 --out prune_eff
 wc -l prune_eff.prune.in
 ```
 
@@ -887,15 +1033,15 @@ alpha_naive = 0.05 / n_pruned
 print(f"Pruned variant count: {n_pruned}")
 print(f"Effective-test-adjusted threshold: {alpha_naive:.3e}")
 
-# Pruned variant count: 50923
-# Effective-test-adjusted threshold: 9.819e-07
+# Pruned variant count: 50863
+# Effective-test-adjusted threshold: 9.830e-07
 ```
 
 # 12 MAF table sanity check
 ```
-plink --bfile d10 --freq --out d10_freq
+plink --bfile d13 --freq --out d13_freq
 awk 'NR==FNR{ids[$3]; next} FNR==1 || ($3 in ids)' \
-    <(head -20 gwas_firth_sorted.txt) d10_freq.frq
+    <(head -20 gwas_firth_pc1-3_sorted.txt) d13_freq.frq
 ```
 
 # 13 formal power calculation
@@ -904,10 +1050,10 @@ install.packages("remotes")
 remotes::install_version("genpwr", version = "1.0.4", repos = "https://cloud.r-project.org")
 
 library(genpwr)
-# adjust N/Case.Rate to your actual final d10 (or d10_noanc) sample counts
+# adjust N/Case.Rate to your actual final d13 (or d13_noanc) sample counts
 power_result <- genpwr.calc(
   calc = "power", model = "logistic",
-  N = 179, Case.Rate = 91/179,
+  N = 164, Case.Rate = 84/164,
   MAF = seq(0.01, 0.5, 0.01),
   OR = c(1.5, 2, 3, 5),
   Alpha = 5e-8,   # or your effective-test threshold from above
@@ -940,13 +1086,14 @@ plt.legend()
 plt.savefig('power_curve.png', dpi=150)
 ```
 
-"Post-hoc power calculations indicated this study was adequately powered (≥80%) only to detect large-effect common variants (OR≥5, MAF≥0.33) at genome-wide significance (α=5×10⁻⁸); power to detect more modest effects (OR≤3), which are more typical of complex-trait susceptibility loci, remained below 30% across the tested MAF range (Figure SX). This limits our ability to draw firm conclusions from the absence of genome-wide significant findings and supports interpreting the suggestive associations reported here (Table X) as hypothesis-generating, warranting replication in larger, independent cohorts."
+Post-hoc power calculations at the final analytic sample size (N=164) indicated this study was adequately powered (≥80%) only to detect large-effect common variants (OR≥5, MAF≥0.45) at genome-wide significance (α=5×10⁻⁸); power to detect more modest effects (OR≤3) remained below 21% across the tested MAF range, and power for OR≤2 was negligible (<2%) regardless of allele frequency (Figure SX). This limits our ability to draw firm conclusions from the absence of genome-wide significant findings and supports interpreting the suggestive associations reported here (Table X) as hypothesis-generating, warranting replication in larger, independent cohorts.
+
 
 Power calculation for suggestive variants:
 ```R
 power_suggestive <- genpwr.calc(
   calc = "power", model = "logistic",
-  N = 179, Case.Rate = 91/179,
+  N = 164, Case.Rate = 84/179,
   MAF = seq(0.01, 0.5, 0.01),
   OR = c(1.5, 2, 3, 5),
   Alpha = 1e-5,   # your suggestive/effective threshold
@@ -980,18 +1127,23 @@ plt.legend()
 plt.savefig('power_curve_suggestive.png', dpi=150)
 ```
 
-"The P values of Bonferroni corrected thresholds for suggestive, 5 and 1% genome-wide significant levels were 1, 0.05 and 0.01, respectively, divided by the number of SNPs used in the GWAS. The suggestive level was first proposed by Lander and Kruglyak [17] and represents the threshold where, under the null hypothesis, one false positive is expected per genome scan."
+At the conventional suggestive-significance threshold (α=1×10⁻⁵), power improved modestly but remained limited for anything short of large effects: OR=5 crossed 80% power at MAF≥0.20, OR=3 reached a maximum of 58% power even at MAF=0.5, and power for OR=2 remained below 9% and for OR=1.5 below 1% across the entire tested MAF range (Figure SX). This confirms that even under a substantially relaxed significance threshold, the study remains underpowered to detect small-to-moderate effect sizes typical of complex-trait susceptibility loci.
 
+A suggestion:
+```
+"The P values of Bonferroni corrected thresholds for suggestive, 5 and 1% genome-wide significant levels were 1, 0.05 and 0.01, respectively, divided by the number of SNPs used in the GWAS. 
+The suggestive level was first proposed by Lander and Kruglyak [17] and represents the threshold where, under the null hypothesis, one false positive is expected per genome scan."
 So the suggestive line is calculated as the -log10( 1 / number of variants) = 5.2552725051
 
 Reference: Guo, Y., Huang, Y., Hou, L., Ma, J., Chen, C., Ai, H., ... & Ren, J. (2017). Genome-wide detection of genetic markers associated with growth and fatness in four pig populations using four approaches. Genetics Selection Evolution, 49(1), 21.
+```
 
 Calculating power:
 ```
-plink --bfile d10 --indep-pairwise 50 5 0.2 --out prune
+plink --bfile d13 --indep-pairwise 50 5 0.2 --out prune
 ```
-Sum of "leaving" counts across chromosomes = 54,327 pruned-in variants (out of 181,595; matches 181595 - 127268 = 54327).
-Bonferroni threshold = 0.05 / 54327 = 9.20 × 10⁻⁷
+Sum of "leaving" counts across chromosomes = 54,350 pruned-in variants (out of 181,595; matches 181595 - 127245 = 54350).
+Bonferroni threshold = 0.05 / 54350 = 9.20 × 10⁻⁷
 
 Method 2:
 ```
@@ -1002,7 +1154,7 @@ mkdir -p simpleM/dosages
 cd simpleM/dosages
 
 for chr in $(seq 1 22); do
-  plink2 --bfile ../../d10 \
+  plink2 --bfile ../../d13 \
     --chr ${chr} \
     --export A \
     --out chr${chr}_dosage
