@@ -937,6 +937,7 @@ plink2 --bfile d13 --glm firth-fallback sex --covar pca_164.eigenvec \
 
 grep -w "ADD" gwas_firth_pc1-3.PHENO1.glm.logistic.hybrid | awk '$18!="NA"' | sort -gk 18,18 > gwas_firth_pc1-3_sorted.txt
 head -100 gwas_firth_pc1-3_sorted.txt
+head -39 gwas_firth_pc1-3_sorted.txt > top39.txt
 ```
 
 Top 39 hits because they are suggestive under 5×10⁻⁴ threshold
@@ -1060,9 +1061,20 @@ print(f"Effective-test-adjusted threshold: {alpha_naive:.3e}")
 
 # 12 MAF table sanity check
 ```
+# for all
 plink --bfile d13 --freq --out d13_freq
 awk 'NR==FNR{ids[$3]; next} FNR==1 || ($3 in ids)' \
     <(head -20 gwas_firth_pc1-3_sorted.txt) d13_freq.frq
+
+# for cases
+awk '$6 == 2 {print $1, $2}' d13.fam > cases.txt
+plink --bfile d13 --keep cases.txt --make-bed --out d13_case
+plink --bfile d13_case --freq --out d13_case
+
+# for controls
+awk '$6 == 1 {print $1, $2}' d13.fam > controls.txt
+plink --bfile d13 --keep controls.txt --make-bed --out d13_control
+plink --bfile d13_control --freq --out d13_control
 ```
 
 # 13 formal power calculation
@@ -1357,3 +1369,15 @@ awk -F'\t' '$11=="DOMDEV"' gwas_firth_genotypic.PHENO1.glm.logistic.hybrid | sor
 ```
 
 As an additional sensitivity analysis, we fit a genotypic model allowing for non-additive (dominance-deviation) effects at each variant, using the same covariate specification (genetically-imputed sex, PC1–3). The additive-term (ADD) results from this model showed reduced statistical evidence relative to the primary additive-only model: the top hit remained rs1560036, but its significance attenuated (OR=3.00, p=1.28×10⁻⁴ under the genotypic model vs. p=2.42×10⁻⁵ under the additive-only model), and several loci from the primary top-20 list (e.g., rs13081814, rs4923807, rs62121092, rs11818063) fell outside the top ranks entirely. This reduction in power is expected: the genotypic model estimates an additional parameter (dominance deviation) per variant, which increases the effective number of parameters relative to the available sample size (N=164). Dominance-deviation terms could not be reliably estimated for a substantial number of low-frequency variants (minor allele frequency approximately 0.01–0.10 in the affected set), returning undefined estimates due to near-perfect collinearity between the additive and dominance terms (CORR_TOO_HIGH) — a well-recognized limitation of fitting non-additive genetic models at low allele frequencies in modestly-sized cohorts. Given these constraints, the genotypic model was not adopted for the primary analysis; the additive model, which is both statistically better-supported at this sample size and the standard convention for GWAS discovery analyses, was retained as primary. This sensitivity analysis does not provide evidence for dominance effects at the top loci and instead illustrates that any deviation from additivity in this dataset cannot be reliably distinguished from noise given current sample size.
+
+15. Annotation
+```
+awk 'BEGIN{OFS="\t"} {print $1,$2,$3,$4,$5,$6,$7}' top39.txt > top39_for_annotation.tsv
+conda activate bcftols_env
+pip install pandas requests tqdm
+```
+
+I ran the rest in ipynb annotating but i also added eqtl data via script
+```
+python add_gtex_eqtl.py --input top39_FINAL_annotation.tsv --output your_annotated_table_with_gtex.tsv 
+```
