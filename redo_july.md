@@ -1034,6 +1034,7 @@ for i, chrom in enumerate(sorted(df['CHR_NUM'].unique())):
 
 plt.axhline(-np.log10(5e-8), color='red', linestyle='--', label='Genome-wide (5e-8)')
 plt.axhline(-np.log10(1e-5), color='blue', linestyle=':', label='Suggestive (1e-5)')
+plt.axhline(-np.log10(5e-4), color='yellow', linestyle='-.', label='Weak suggestive (5e-4)')
 plt.xticks(xticks, xlabels, rotation=90)
 plt.ylabel('-log10(p)')
 plt.legend()
@@ -1041,6 +1042,9 @@ plt.title('Manhattan Plot (Firth-corrected, PC1-3 + Sex adjusted)')
 plt.tight_layout()
 plt.savefig('manhattan_plot_firth.png', dpi=150)
 ```
+
+Lambda GC: 1.0619
+
 
 # 11 calculating effective number of tests
 ```bash
@@ -1381,3 +1385,5 @@ I ran the rest in ipynb annotating but i also added eqtl data via script
 ```
 python add_gtex_eqtl.py --input top39_FINAL_annotation.tsv --output your_annotated_table_with_gtex.tsv 
 ```
+
+# 16. PRS
