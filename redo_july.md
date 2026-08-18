@@ -1308,6 +1308,7 @@ The genome-wide significance threshold of 5×10⁻⁸ was derived for arrays wit
 
 The effective number of independent tests, estimated via windowed eigenvalue decomposition (Li & Ji, 2005; Gao et al., 2008) on the final analytic sample (N=164, autosomal variants, n=180,388), was M_eff=16,319.2, yielding a study-specific significance threshold of 0.05/16,319.2 = 3.06×10⁻⁶. The top association (rs1560036, p=2.42×10⁻⁵) did not reach this threshold.
 
+```
 Result:
 ==================== SUMMARY (AUTOSOMES ONLY, chr1-22) ====================
 Total SNPs (autosomal, post-QC):        180388
@@ -1315,7 +1316,7 @@ Total effective independent tests:      16319.2
 simpleM-corrected significance threshold: 3.064e-06
 chrX (23) excluded from this calculation — see README note.
 =============================================================================
-
+```
 
 # 14: I will try other models:
 1. Sex not adjusted:
