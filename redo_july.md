@@ -1387,3 +1387,89 @@ python add_gtex_eqtl.py --input top39_FINAL_annotation.tsv --output your_annotat
 ```
 
 # 16. PRS
+```
+# getting bed file for liftover
+awk 'BEGIN{OFS="\t"} {print "chr"$1, $4-1, $4, $2}' d13.bim > d13_liftover.bed
+# i downloaded liftovered file as my_d13_to37.bed and 1284 fails as liftover_fail.txt; 1206 of them are rsids and 78 aren't
+```
+
+for those 1206 i did this:
+```python
+import pandas as pd
+import requests
+import time
+
+def lookup_rsids_grch37(rsids):
+    url = "https://grch37.rest.ensembl.org/variation/human"
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    
+    results = []
+    chunk_size = 200  # Ensembl POST limit
+    for i in range(0, len(rsids), chunk_size):
+        chunk = rsids[i:i+chunk_size]
+        payload = {"ids": chunk}
+        
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            data = response.json()
+            for rsid, info in data.items():
+                mappings = info.get('mappings', [])
+                for mapping in mappings:
+                    results.append({
+                        "rsID": rsid,
+                        "Chromosome": mapping.get('seq_region_name'),
+                        "Start": mapping.get('start'),
+                        "End": mapping.get('end'),
+                        "Allele_String": mapping.get('allele_string'),
+                        "Strand": mapping.get('strand')
+                    })
+        else:
+            print(f"Error fetching chunk starting at index {i}: Status code {response.status_code}")
+            print(f"Response: {response.text}")  # <-- see the actual reason
+            print(f"First few IDs in chunk: {chunk[:5]}")
+        
+        time.sleep(0.2)  # be polite to the API, avoid rate-limit 429s later
+            
+    return pd.DataFrame(results)
+
+# Read and clean the rsid list properly
+df = pd.read_csv('for_additional_anno.txt', header=None)  # set header=0 if there IS a header row
+my_rsids = df[0].dropna().astype(str).str.strip().unique().tolist()
+
+# sanity check before hitting the API
+print(f"Total rsids: {len(my_rsids)}")
+print(f"Sample: {my_rsids[:5]}")
+bad = [r for r in my_rsids if not r.startswith('rs')]
+print(f"Malformed entries (should be empty): {bad[:10]}")
+
+df_37 = lookup_rsids_grch37(my_rsids)
+df_37.to_csv("rsids_grch37.csv", index=False)
+```
+
+```bash
+# had to remove all non usual chromosomes
+awk -F, '$2 ~ /^([1-9]|1[0-9]|2[0-2]|X|Y|MT)$/' rsids_grch37.csv  > rsids_grch37_clean.csv
+
+# combining them together:
+# From the liftOver BED: strip "chr" prefix, position = end column (1-based)
+awk 'BEGIN{OFS="\t"} {sub(/^chr/,"",$1); print $4, $1, $3}' my_d13_to37.bed > from_liftover.txt
+
+# From the Ensembl lookup CSV: rsid, chr, pos (already 1-based)
+awk -F, 'BEGIN{OFS="\t"} {print $1, $2, $3}' rsids_grch37_clean.csv > from_ensembl.txt
+
+# Combine, check for any rsid appearing in both (shouldn't happen, but verify)
+cat from_liftover.txt from_ensembl.txt | sort -k1,1 > combined_grch37.txt
+awk '{print $1}' combined_grch37.txt | uniq -d > overlap_check.txt
+wc -l overlap_check.txt
+
+# use as dictionary
+awk 'BEGIN{OFS="\t"} {print $1, $2}' combined_grch37.txt > update_chr.txt   # rsid, new chromosome
+awk 'BEGIN{OFS="\t"} {print $1, $3}' combined_grch37.txt > update_pos.txt  # rsid, new position
+
+plink --bfile d13 \
+  --update-chr update_chr.txt \
+  --update-map update_pos.txt \
+  --make-bed --out d13_37
+```
+
+181595 snps in d13 became 181517 snps after liftover.
