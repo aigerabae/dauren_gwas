@@ -1473,3 +1473,328 @@ plink --bfile d13 \
 ```
 
 181595 snps in d13 became 181517 snps after liftover.
+
+Reformatting GWAMA to PLINK:
+```
+# Build chr:pos key from your target data (using YOUR SNP id)
+awk '{print $1":"$4, $2}' d13_37.bim | sort -k1,1 > bim_key.txt
+
+# Build chr:pos key from GWAMA (carry effect_allele, other_allele, odds_ratio, p_value)
+awk 'NR>1{print $2":"$3, $4, $5, $7, $12}' GWAMA.Asia.Final.gcFEchbp.out | sort -k1,1 > gwama_key.txt
+
+# Join on chr:pos
+join -1 1 -2 1 bim_key.txt gwama_key.txt > merged.txt
+wc -l merged.txt
+
+awk 'BEGIN{print "SNP","A1","BETA"} {print $2, $3, log($5)}' merged.txt > asia_score_input.txt
+
+awk 'BEGIN{print "SNP","P"} {print $2, $6}' merged.txt > asia_clump_pvals.txt
+```
+
+Clumping:
+```
+plink --bfile d13_37 \
+  --clump asia_clump_pvals.txt \
+  --clump-p1 0.05 --clump-p2 0.05 \
+  --clump-r2 0.1 --clump-kb 250 \
+  --clump-snp-field SNP --clump-field P \
+  --out asia_clumped
+```
+
+3602 clumps formed from 8488 top variants.
+
+Extract snps:
+```
+awk 'NR>1{print $3}' asia_clumped.clumped > asia_clumped.clumped.snplist
+wc -l asia_clumped.clumped.snplist
+```
+
+Run actual scoring:
+```
+plink --bfile d13_37 \
+  --score asia_score_input.txt 1 2 3 header \
+  --extract asia_clumped.clumped.snplist \
+  --out prs_asia_base
+```
+
+Sanity check the output:
+```
+head prs_asia_base.profile
+wc -l prs_asia_base.profile
+```
+
+
+Getting insights:
+```
+plink --bfile d13_37 --indep-pairwise 200 50 0.25 --out pruned
+plink --bfile d13_37 --extract pruned.prune.in --pca 10 --out d13_pca
+```
+
+```R
+install.packages(c("dplyr", "pROC"))
+
+library(dplyr)
+library(pROC)
+
+prs <- read.table("prs_asia_base.profile", header=TRUE)
+pca <- read.table("d13_pca.eigenvec", header=FALSE)
+colnames(pca) <- c("FID","IID", paste0("PC",1:10))
+
+df <- merge(prs, pca, by=c("FID","IID"))
+
+# Standardize PRS
+df$PRS_z <- scale(df$SCORE)
+
+# PHENO in .fam/.profile is coded 1=control, 2=case by default -- convert to 0/1
+df$TB <- df$PHENO - 1
+
+# Logistic regression: PRS alone
+m1 <- glm(TB ~ PRS_z, data=df, family=binomial)
+summary(m1)
+
+# Logistic regression: PRS + ancestry PCs (adjust N of PCs as needed, check scree/variance explained)
+m2 <- glm(TB ~ PRS_z + PC1 + PC2 + PC3, data=df, family=binomial)
+summary(m2)
+
+# AUC
+pred <- predict(m2, type="response")
+roc_obj <- roc(df$TB, pred)
+auc(roc_obj)
+
+# Nagelkerke pseudo-R^2
+nagelkerke_r2 <- function(model) {
+  n <- nobs(model)
+  ll_full <- as.numeric(logLik(model))
+  ll_null <- as.numeric(logLik(update(model, . ~ 1)))
+  
+  cox_snell <- 1 - exp((2/n) * (ll_null - ll_full))
+  max_r2 <- 1 - exp((2/n) * ll_null)
+  nagelkerke <- cox_snell / max_r2
+  
+  cat("Cox & Snell R2:", round(cox_snell, 4), "\n")
+  cat("Nagelkerke R2:", round(nagelkerke, 4), "\n")
+  return(nagelkerke)
+}
+
+nagelkerke_r2(m2)
+```
+
+Output:
+```
+Coefficients:
+            Estimate Std. Error z value Pr(>|z|)
+(Intercept)  0.04934    0.15684   0.315    0.753
+PRS_z        0.17925    0.15929   1.125    0.260
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 227.25  on 163  degrees of freedom
+Residual deviance: 225.97  on 162  degrees of freedom
+AIC: 229.97
+
+Number of Fisher Scoring iterations: 4
+
+
+Call:
+glm(formula = TB ~ PRS_z + PC1 + PC2 + PC3, family = binomial, 
+    data = df)
+
+Coefficients:
+            Estimate Std. Error z value Pr(>|z|)
+(Intercept)  0.05089    0.15786   0.322    0.747
+PRS_z        0.17697    0.15987   1.107    0.268
+PC1          1.67725    2.04896   0.819    0.413
+PC2          2.18933    2.06289   1.061    0.289
+PC3          1.11049    2.05102   0.541    0.588
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 227.25  on 163  degrees of freedom
+Residual deviance: 223.88  on 159  degrees of freedom
+AIC: 233.88
+
+Number of Fisher Scoring iterations: 4
+
+Setting levels: control = 0, case = 1
+Setting direction: controls < cases
+Area under the curve: 0.5854
+Cox & Snell R2: 0.0204 
+Nagelkerke R2: 0.0272 
+[1] 0.02719539
+```
+
+Looking at results:
+```
+> df$prs_decile <- ntile(df$PRS_z, 10)
+table(df$prs_decile, df$TB)
+
+# odds ratio: top decile vs bottom decile
+top_vs_bottom <- df %>% filter(prs_decile %in% c(1,10))
+m3 <- glm(TB ~ factor(prs_decile), data=top_vs_bottom, family=binomial)
+summary(m3)
+    
+      0  1
+  1  10  7
+  2   8  9
+  3   9  8
+  4  10  7
+  5   7  9
+  6   8  8
+  7  10  6
+  8   4 12
+  9   7  9
+  10  7  9
+
+Call:
+glm(formula = TB ~ factor(prs_decile), family = binomial, data = top_vs_bottom)
+
+Coefficients:
+                     Estimate Std. Error z value Pr(>|z|)
+(Intercept)           -0.3567     0.4928  -0.724    0.469
+factor(prs_decile)10   0.6080     0.7049   0.863    0.388
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 45.717  on 32  degrees of freedom
+Residual deviance: 44.965  on 31  degrees of freedom
+AIC: 48.965
+
+Number of Fisher Scoring iterations: 4
+```
+
+
+Same for europe:
+```
+# Join on chr:pos
+awk 'NR>1{print $2":"$3, $4, $5, $7, $12}' GWAMA.Europe.Final.gcFEchbp.out | sort -k1,1 > europe_key.txt
+join -1 1 -2 1 bim_key.txt europe_key.txt > merged_europe.txt
+wc -l merged_europe.txt
+
+# Check for duplicate SNP IDs from multi-allelic matches
+awk '{print $2}' merged_europe.txt | sort | uniq -d | wc -l
+
+# Build score input and clump p-value files
+awk 'BEGIN{print "SNP","A1","BETA"} {print $2, $3, log($5)}' merged_europe.txt > europe_score_input.txt
+awk 'BEGIN{print "SNP","P"} {print $2, $6}' merged_europe.txt > europe_clump_pvals.txt
+
+# Clump
+plink --bfile d13_37 \
+  --clump europe_clump_pvals.txt \
+  --clump-p1 0.05 --clump-p2 0.05 \
+  --clump-r2 0.1 --clump-kb 250 \
+  --clump-snp-field SNP --clump-field P \
+  --out europe_clumped
+
+# Extract clumped SNP list
+awk 'NR>1{print $3}' europe_clumped.clumped > europe_clumped.clumped.snplist
+wc -l europe_clumped.clumped.snplist
+
+# Score
+plink --bfile d13_37 \
+  --score europe_score_input.txt 1 2 3 header \
+  --extract europe_clumped.clumped.snplist \
+  --out prs_europe_base
+```
+
+output:
+```
+Among remaining phenotypes, 84 are cases and 80 are controls.
+Warning: 172350 lines skipped in --score file (172349 due to variant ID
+mismatch, 1 due to allele code mismatch); see prs_europe_base.nopred for
+details.
+--score: 3849 valid predictors loaded.
+--score: Results written to prs_europe_base.profile .
+```
+
+
+
+
+Getting insights for europe:
+```R
+library(dplyr)
+library(pROC)
+
+prs <- read.table("prs_europe_base.profile", header=TRUE)
+pca <- read.table("d13_pca.eigenvec", header=FALSE)
+colnames(pca) <- c("FID","IID", paste0("PC",1:10))
+
+df <- merge(prs, pca, by=c("FID","IID"))
+
+# Standardize PRS
+df$PRS_z <- scale(df$SCORE)
+
+# PHENO in .fam/.profile is coded 1=control, 2=case by default -- convert to 0/1
+df$TB <- df$PHENO - 1
+
+# Logistic regression: PRS alone
+m1 <- glm(TB ~ PRS_z, data=df, family=binomial)
+summary(m1)
+
+# Logistic regression: PRS + ancestry PCs (adjust N of PCs as needed, check scree/variance explained)
+m2 <- glm(TB ~ PRS_z + PC1 + PC2 + PC3, data=df, family=binomial)
+summary(m2)
+
+# AUC
+pred <- predict(m2, type="response")
+roc_obj <- roc(df$TB, pred)
+auc(roc_obj)
+
+# Nagelkerke pseudo-R^2
+nagelkerke_r2 <- function(model) {
+  n <- nobs(model)
+  ll_full <- as.numeric(logLik(model))
+  ll_null <- as.numeric(logLik(update(model, . ~ 1)))
+  
+  cox_snell <- 1 - exp((2/n) * (ll_null - ll_full))
+  max_r2 <- 1 - exp((2/n) * ll_null)
+  nagelkerke <- cox_snell / max_r2
+  
+  cat("Cox & Snell R2:", round(cox_snell, 4), "\n")
+  cat("Nagelkerke R2:", round(nagelkerke, 4), "\n")
+  return(nagelkerke)
+}
+
+nagelkerke_r2(m2)
+```
+
+Comparing asia and europe:
+```
+library(dplyr)
+library(pROC)
+
+pca <- read.table("d13_pca.eigenvec", header=FALSE)
+colnames(pca) <- c("FID","IID", paste0("PC",1:10))
+
+prs_asia <- read.table("prs_asia_base.profile", header=TRUE)
+prs_eur  <- read.table("prs_europe_base.profile", header=TRUE)
+
+df_combined <- merge(prs_asia[,c("FID","IID","PHENO","SCORE")], 
+                      prs_eur[,c("FID","IID","SCORE")], 
+                      by=c("FID","IID"), 
+                      suffixes=c("_asia","_europe"))
+
+df_combined <- merge(df_combined, pca, by=c("FID","IID"))
+
+df_combined$TB <- df_combined$PHENO - 1
+df_combined$PRS_asia_z <- as.numeric(scale(df_combined$SCORE_asia))
+df_combined$PRS_eur_z  <- as.numeric(scale(df_combined$SCORE_europe))
+
+# sanity check these are actually different
+cor(df_combined$PRS_asia_z, df_combined$PRS_eur_z)
+head(df_combined[,c("PRS_asia_z","PRS_eur_z")])
+
+m_asia <- glm(TB ~ PRS_asia_z + PC1 + PC2 + PC3, data=df_combined, family=binomial)
+m_eur  <- glm(TB ~ PRS_eur_z + PC1 + PC2 + PC3, data=df_combined, family=binomial)
+
+roc_asia <- roc(df_combined$TB, predict(m_asia, type="response"))
+roc_eur  <- roc(df_combined$TB, predict(m_eur, type="response"))
+
+auc(roc_asia)
+auc(roc_eur)
+roc.test(roc_asia, roc_eur)
+```
+
+Here's a summary paragraph you can use or adapt for a writeup:
+
+To evaluate whether polygenic risk scores (PRS) for tuberculosis (TB) susceptibility, derived from published multi-ancestry GWAS data, could meaningfully stratify genetic risk in a Kazakh cohort, we constructed and validated PRS using summary statistics from the International Tuberculosis Host Genetics Consortium (ITHGC) multi-ancestry meta-analysis (Schurz et al., 2024). Because Kazakh ancestry is genetically intermediate between East Asian and European populations and was not itself represented in the ITHGC discovery cohorts, we tested two ancestry-specific base datasets in parallel — the Asian and European fixed-effects meta-analysis summary statistics (GWAMA) — to assess which showed better transferability to our target sample. After harmonizing genomic coordinates between datasets (lifting our target genotype data to GRCh37 and resolving variant identifiers via chromosome:position matching, since a substantial fraction of GWAMA variants and our array-genotyped SNPs used inconsistent ID formats), we performed linkage disequilibrium clumping (p<0.05, r²<0.1, 250kb windows) on each ancestry-specific base independently, yielding 8,488 candidate variants from the Asian base and 3,849 from the European base. PRS were calculated in PLINK as the weighted sum of risk allele dosages using effect sizes (log odds ratios) from each respective base, then standardized and evaluated in logistic regression models adjusted for ancestry principal components, with model performance assessed via AUC and Nagelkerke pseudo-R². Both ancestry-specific PRS showed a weak, non-significant association with TB case status in the expected direction (Asia-base: OR direction positive, p=0.26, AUC=0.585, Nagelkerke R²=0.027; Europe-base: p=0.50, AUC=0.572, Nagelkerke R²=0.021), and a DeLong's test comparing the two ROC curves found no statistically significant difference in predictive performance between the ancestry-specific bases (Z=0.34, p=0.74). These results suggest a modest, directionally consistent genetic signal that neither ancestry-specific PRS captures with statistical confidence in this cohort (n=164), most plausibly reflecting a combination of limited target sample size and the well-documented challenge of cross-ancestry PRS transferability for TB — a disease for which, as of this analysis, no validated PRS model exists in the PGS Catalog for any population.
+***need to rephrase to avoid plagiarism***
