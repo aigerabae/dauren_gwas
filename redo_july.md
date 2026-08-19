@@ -1875,47 +1875,23 @@ Note: several genes with NSNPS=1 (examples: 84902, 22992, 1475, 162962, 55608, 3
 
 Getting p values for snp level gwas and gene lvele magma for each rsid:
 ```
-#!/bin/bash
-# combine_magma_snps.sh
-# Combines MAGMA gene-based results with the specific rsIDs annotated to each gene,
-# plus each SNP's individual association p-value from the primary GWAS results.
-
-GENES_OUT="kazakh_gene_results_35_10.genes.out"
-ANNOT_FILE="kazakh_gwas_annot_35_10.genes.annot"
-GWAS_FILE="gwas_firth_pc1-3_sex.PHENO1.glm.logistic.hybrid"
-OUT_FILE="magma_genes_with_snps.tsv"
-
-# Confirm column layout of GWAS file before running (adjust if different)
-echo "GWAS file header (confirm column indices):"
-head -1 "$GWAS_FILE"
-echo "---"
-
-# Build a quick lookup: rsID -> P-value, from the GWAS ADD rows only
-awk -F'\t' '$11=="ADD" {print $3"\t"$18}' "$GWAS_FILE" > snp_pval_lookup.tsv
-
-# Header for output table
-echo -e "GENE\tCHR\tSTART\tSTOP\tNSNPS\tGENE_P\tSNP_RSID\tSNP_P" > "$OUT_FILE"
-
-# Skip header row of genes.out, process each gene
-tail -n +2 "$GENES_OUT" | while read -r GENE CHR START STOP NSNPS NPARAM N ZSTAT P; do
-    # Pull the annotation line for this gene: GENE  CHR:START:STOP  SNP1 SNP2 SNP3...
-    ANNOT_LINE=$(awk -v g="$GENE" '$1==g' "$ANNOT_FILE")
-    if [ -z "$ANNOT_LINE" ]; then
-        continue
-    fi
-    # SNP IDs start from field 3 onward (field 1=gene, field 2=chr:start:stop)
-    SNP_LIST=$(echo "$ANNOT_LINE" | cut -f3- | tr '\t' '\n')
-
-    for SNP in $SNP_LIST; do
-        SNP_P=$(awk -F'\t' -v s="$SNP" '$1==s {print $2}' snp_pval_lookup.tsv)
-        if [ -z "$SNP_P" ]; then
-            SNP_P="NA"
-        fi
-        echo -e "${GENE}\t${CHR}\t${START}\t${STOP}\t${NSNPS}\t${P}\t${SNP}\t${SNP_P}" >> "$OUT_FILE"
-    done
-done
-
-echo "Done. Output written to $OUT_FILE"
+awk -F'\t' '
+# First pass: load SNP -> p-value lookup from GWAS file
+NR==FNR {
+    if ($11=="ADD") pval[$3]=$18
+    next
+}
+# Second pass: annot file, skip nothing, process every gene line
+FNR==1 { next }  # not needed for annot file unless it has a header; remove if no header
+{
+    gene=$1
+    for (i=3; i<=NF; i++) {
+        snp=$i
+        p = (snp in pval) ? pval[snp] : "NA"
+        print gene"\t"snp"\t"p
+    }
+}
+' "$GWAS_FILE" "$ANNOT_FILE" > gene_snp_pvals.tsv
 ```
 
 # could do:
