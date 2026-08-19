@@ -1875,24 +1875,64 @@ Note: several genes with NSNPS=1 (examples: 84902, 22992, 1475, 162962, 55608, 3
 
 Getting p values for snp level gwas and gene lvele magma for each rsid:
 ```
-awk -F'\t' '
-# First pass: load SNP -> p-value lookup from GWAS file
-NR==FNR {
-    if ($11=="ADD") pval[$3]=$18
-    next
-}
-# Second pass: annot file, skip nothing, process every gene line
-FNR==1 { next }  # not needed for annot file unless it has a header; remove if no header
-{
-    gene=$1
-    for (i=3; i<=NF; i++) {
-        snp=$i
-        p = (snp in pval) ? pval[snp] : "NA"
-        print gene"\t"snp"\t"p
-    }
-}
-' "$GWAS_FILE" "$ANNOT_FILE" > gene_snp_pvals.tsv
+import pandas as pd
+
+# 1. Gene-level results
+genes = pd.read_csv("kazakh_gene_results_35_10.genes.out", sep=r"\s+")
+genes['GENE'] = genes['GENE'].astype(str).str.strip()
+
+# 2. SNP p-value lookup from GWAS file (confirmed working — 181,595 loaded)
+snp_pvals = {}
+with open("gwas_firth_pc1-3_sex.PHENO1.glm.logistic.hybrid") as f:
+    header = f.readline()
+    for line in f:
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) < 18:
+            continue
+        if fields[10] == "ADD":
+            snp_pvals[fields[2]] = fields[17]
+
+# 3. Parse annot file properly, skipping the two '#' comment lines
+rows = []
+with open("kazakh_gwas_annot_35_10.genes.annot") as f:
+    for line in f:
+        if line.startswith("#"):
+            continue
+        parts = line.rstrip("\n").split("\t")
+        gene_id = parts[0].strip()
+        coord = parts[1]  # "CHR:START:STOP"
+        snp_ids = parts[2:]
+        for snp in snp_ids:
+            snp = snp.strip()
+            if not snp:
+                continue
+            p = snp_pvals.get(snp, "NA")
+            rows.append((gene_id, coord, snp, p))
+
+snp_gene_df = pd.DataFrame(rows, columns=["GENE", "COORD", "SNP_RSID", "SNP_P"])
+snp_gene_df['GENE'] = snp_gene_df['GENE'].astype(str).str.strip()
+
+print(snp_gene_df.shape)
+print(snp_gene_df.head(10))
+print(snp_gene_df['GENE'].nunique(), "unique genes with SNPs")
+
+# 4. Merge with gene-level stats
+combined = snp_gene_df.merge(genes, on="GENE", how="left")
+combined = combined[["GENE","CHR","START","STOP","NSNPS","P","SNP_RSID","SNP_P"]]
+combined = combined.rename(columns={"P":"GENE_P"})
+
+print(combined.head(20))
+combined.to_csv("magma_genes_with_snps.tsv", sep="\t", index=False)
 ```
+
+
+
+Viewing the top 20:
+awk -F'\t' 'NR>1 && $6!="" && $6!="NA" && $8!="NA" {print}' magma_genes_with_snps.tsv | sort -t$'\t' -gk6,6 | column -t -s$'\t' | head -20
+awk -F'\t' 'NR>1 && $8!="" && $6!="NA" && $8!="NA" {print}' magma_genes_with_snps.tsv | sort -t$'\t' -gk8,8 | column -t -s$'\t' | head -20
+
+This doesn't work. I need to get the overap or venn diagram or something to actuall see the overlap of p values
+
 
 # could do:
 # gene set enrichment - need to download
