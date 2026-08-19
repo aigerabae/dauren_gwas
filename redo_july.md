@@ -1803,3 +1803,124 @@ To evaluate whether polygenic risk scores (PRS) for tuberculosis (TB) susceptibi
 SNPs shared between my data and the base (total overlap)  |  167980  |   176199  |  
 SNPs passing p<0.05 ("top variants," pre-LD-pruning)	  |  8,488   | 	 10,312  |  
 Final independent SNPs after clumping                     |  3,602   |   3,850   |  
+
+
+# 17 MAGMA:
+I will use wgs kazakh data for ld:
+# from server to get my binary files (workflow is in wgs github repo) and i copied binary files to local /mnt/harddisk/biostar/dauren_gwas/redo_july/plink/magma
+# i also copied gwas_firth_pc1-3_sex.PHENO1.glm.logistic.hybrid  and d13 binary files into /mnt/harddisk/biostar/dauren_gwas/redo_july/plink/magma
+
+
+# 2. Restrict to variants overlapping your GWAS array
+#    (MAGMA reference should ideally cover the same SNP set you're testing —
+#    at minimum, needs to include your 181,595 array SNPs, or MAGMA will only
+#    use whatever overlaps)
+plink2 --bfile kaz7 --extract d13.bim --make-bed --out kazakh_wgs_ref_overlap
+
+# 3. Basic QC on the reference panel itself (MAGMA/standard LD-panel conventions)
+plink2 --bfile kazakh_wgs_ref_overlap --maf 0.01 --geno 0.05 --make-bed --out kazakh_wgs_ref_final
+
+# getting p values
+awk -F'\t' '$11=="ADD" && $18!="NA" {print $3, $18, $11}' \
+    gwas_firth_pc1-3_sex.PHENO1.glm.logistic.hybrid > gwas_full_summary.txt
+
+awk 'BEGIN{OFS="\t"; print "SNP","P","N"} {print $1, $2, 164}' gwas_full_summary.txt > magma_pval_input.txt
+
+# NCBI/MAGMA-formatted gene location file for GRCh38 — download from MAGMA's site
+wget https://ctg.cncr.nl/software/MAGMA/aux_files/NCBI38.gene.loc.zip
+unzip NCBI38.gene.loc.zip
+
+# installing magma:
+conda activate bcftools_env
+
+# downloaded Auxiliary files for hg38 from https://cncr.nl/research/magma/
+# running magma with different sensitivies:
+magma_v1.10/magma --annotate window=10,10 \
+    --snp-loc d13.bim \
+    --gene-loc NCBI38/NCBI38.gene.loc \
+    --out kazakh_gwas_annot_10kb
+
+magma_v1.10/magma --annotate window=35,10 \
+    --snp-loc d13.bim \
+    --gene-loc NCBI38/NCBI38.gene.loc \
+    --out kazakh_gwas_annot_35_10
+
+
+
+	
+# gene based test
+# Primary (10kb/10kb)
+magma_v1.10/magma --bfile kazakh_wgs_ref_final \
+    --pval magma_pval_input.txt N=164 \
+    --gene-annot kazakh_gwas_annot_10kb.genes.annot \
+    --out kazakh_gene_results_10kb
+
+# Sensitivity (35kb/10kb)
+magma_v1.10/magma --bfile kazakh_wgs_ref_final \
+    --pval magma_pval_input.txt N=164 \
+    --gene-annot kazakh_gwas_annot_35_10.genes.annot \
+    --out kazakh_gene_results_35_10
+
+# comparing 2 runs:
+# Top 20 genes by p-value, each window
+sort -gk9,9 kazakh_gene_results_10kb.genes.out | head -20
+sort -gk9,9 kazakh_gene_results_35_10.genes.out | head -20
+```
+
+Gene-based analysis using MAGMA, with LD estimated from an ancestry-matched Kazakh WGS reference panel (n=224), did not identify any gene reaching genome-wide significance (Bonferroni threshold ≈2.6×10⁻⁶ for ~19,000 genes tested; best gene-level p=4.36×10⁻⁴). The top-ranked genes were substantially consistent across two SNP-to-gene annotation window choices (10kb symmetric and 35kb upstream/10kb downstream; 12 of the top 20 genes overlapped between analyses), indicating this result is not sensitive to annotation window specification. Several top-ranked genes were driven by a single annotated SNP (NSNPS=1) and thus do not reflect genuine multi-SNP aggregation; [gene 23765, chr22] represented the most substantively aggregated signal among top hits (57 SNPs, 14 independent principal components). Consistent with SNP-level findings, gene-based results support a hypothesis-generating rather than confirmatory interpretation, in line with the study's limited statistical power (Figure SX).
+
+Note: several genes with NSNPS=1 (examples: 84902, 22992, 1475, 162962, 55608, 341116) aren't leveraging MAGMA's aggregation advantage at all; they're just single-SNP results relabeled.
+
+
+
+Getting p values for snp level gwas and gene lvele magma for each rsid:
+```
+#!/bin/bash
+# combine_magma_snps.sh
+# Combines MAGMA gene-based results with the specific rsIDs annotated to each gene,
+# plus each SNP's individual association p-value from the primary GWAS results.
+
+GENES_OUT="kazakh_gene_results_35_10.genes.out"
+ANNOT_FILE="kazakh_gwas_annot_35_10.genes.annot"
+GWAS_FILE="gwas_firth_pc1-3_sex.PHENO1.glm.logistic.hybrid"
+OUT_FILE="magma_genes_with_snps.tsv"
+
+# Confirm column layout of GWAS file before running (adjust if different)
+echo "GWAS file header (confirm column indices):"
+head -1 "$GWAS_FILE"
+echo "---"
+
+# Build a quick lookup: rsID -> P-value, from the GWAS ADD rows only
+awk -F'\t' '$11=="ADD" {print $3"\t"$18}' "$GWAS_FILE" > snp_pval_lookup.tsv
+
+# Header for output table
+echo -e "GENE\tCHR\tSTART\tSTOP\tNSNPS\tGENE_P\tSNP_RSID\tSNP_P" > "$OUT_FILE"
+
+# Skip header row of genes.out, process each gene
+tail -n +2 "$GENES_OUT" | while read -r GENE CHR START STOP NSNPS NPARAM N ZSTAT P; do
+    # Pull the annotation line for this gene: GENE  CHR:START:STOP  SNP1 SNP2 SNP3...
+    ANNOT_LINE=$(awk -v g="$GENE" '$1==g' "$ANNOT_FILE")
+    if [ -z "$ANNOT_LINE" ]; then
+        continue
+    fi
+    # SNP IDs start from field 3 onward (field 1=gene, field 2=chr:start:stop)
+    SNP_LIST=$(echo "$ANNOT_LINE" | cut -f3- | tr '\t' '\n')
+
+    for SNP in $SNP_LIST; do
+        SNP_P=$(awk -F'\t' -v s="$SNP" '$1==s {print $2}' snp_pval_lookup.tsv)
+        if [ -z "$SNP_P" ]; then
+            SNP_P="NA"
+        fi
+        echo -e "${GENE}\t${CHR}\t${START}\t${STOP}\t${NSNPS}\t${P}\t${SNP}\t${SNP_P}" >> "$OUT_FILE"
+    done
+done
+
+echo "Done. Output written to $OUT_FILE"
+```
+
+# could do:
+# gene set enrichment - need to download
+# a gene set file, e.g. MSigDB curated/immune-relevant sets in MAGMA-compatible format
+#magma_v1.10/magma --gene-results kazakh_gene_results.genes.raw \
+#    --set-annot msigdb_immune_sets.txt \
+#    --out kazakh_pathway_results
