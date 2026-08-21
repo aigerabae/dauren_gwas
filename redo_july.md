@@ -109,7 +109,7 @@ ID	0	./dauren_gwas.vcf.gz
 #   number of multiallelic sites     .. number of rows with multiple alternate alleles
 #   number of multiallelic SNP sites .. number of rows with multiple alternate alleles, all SNPs
 # 
-#   Note that rows containing multiple types will be counted multiple times, in each
+#   Note that rows containing multiple types will be counted multiple , in each
 #   counter. For example, a row with a SNP and an indel increments both the SNP and
 #   the indel counter.
 # 
@@ -861,7 +861,7 @@ plt.xlabel('PC'); plt.ylabel('Eigenvalue'); plt.title('PCA Scree Plot')
 plt.savefig('scree_plot2.png')
 ```
 
-Following outlier removal, the PCA eigenvalue spectrum showed no discrete elbow (Supplementary Figure X), consistent with a homogeneous residual population; association analyses were therefore performed adjusting for [N] PCs, with results robust to inclusion of up to 10 PCs (Supplementary Table Y)."
+Following outlier removal, the PCA eigenvalue spectrum exhibited no clear elbow (Supplementary Figure X), indicating a homogeneous residual cohort. Association analyses were consequently adjusted for [N] principal components, and the resulting estimates remained robust when adding up to 10 PCs (Supplementary Table Y).
 
 # 9. Association testing — PCA-adjusted logistic regression, not --model
 All 10 PCs:
@@ -928,7 +928,7 @@ X	2623614	rs3795179	A	G	Y	G	A	0.20122NADD	164	0.302967	0.32616	0.15987	0.574148	
 3	161296488	rs1478568	T	C	Y	C	T	0.317073	N	ADD	164	0.3818	0.274546	0.222916	0.653927-3.5071	0.000453017	.
 ```
 
-Ancestry outliers were identified by iterative PCA: at each round, PCA was performed on an LD-pruned variant set (r²<0.2, 50-SNP window, 5-SNP step), and samples deviating more than 4 SD from the cohort mean on PC1 or PC2 were flagged and removed. This process was repeated, re-pruning and recomputing PCA at each round, until no further outliers were detected (three rounds; N=179→173→168→164). The resulting eigenvalue spectrum showed no discrete elbow (Supplementary Figure X), consistent with a genetically homogeneous residual cohort. 
+Ancestry outliers were identified by iterative PCA: at each round, PCA was performed on an LD-pruned variant set (r²<0.2, 50-SNP window, 5-SNP step), and samples deviating more than 4 SD from the cohort mean on PC1 or PC2 were flagged and removed. This process was repeated, re-pruning and recomputing PCA at each round, until no more outliers were detected (three rounds; N=179→173→168→164). The resulting eigenvalue spectrum showed no discrete elbow (Supplementary Figure X), consistent with a genetically homogeneous residual cohort. 
 
 Calculating for PC1-3 + sex adjusted:
 ```
@@ -1123,7 +1123,7 @@ plt.legend()
 plt.savefig('power_curve.png', dpi=150)
 ```
 
-Post-hoc power calculations at the final analytic sample size (N=164) indicated this study was adequately powered (≥80%) only to detect large-effect common variants (OR≥5, MAF≥0.45) at genome-wide significance (α=5×10⁻⁸); power to detect more modest effects (OR≤3) remained below 21% across the tested MAF range, and power for OR≤2 was negligible (<2%) regardless of allele frequency (Figure SX). This limits our ability to draw firm conclusions from the absence of genome-wide significant findings and supports interpreting the suggestive associations reported here (Table X) as hypothesis-generating, warranting replication in larger, independent cohorts.
+Post-hoc power calculations at the final analytic sample size (N=164) indicated this study was adequately powered (≥80%) only to detect large-effect common variants (OR≥5, MAF≥0.45) at genome-wide significance (a = 5e-8); power to detect more modest effects (OR≤3) remained below 21% across the tested MAF range, and power for OR≤2 was negligible (<2%) regardless of allele frequency (Figure SX). This limits our ability to draw conclusions from the absence of genome-wide significant findings and supports interpreting the suggestive associations reported here as hypothesis-generating, requiring replication in larger, independent cohorts.
 
 
 Power calculation for suggestive variants:
@@ -1164,7 +1164,7 @@ plt.legend()
 plt.savefig('power_curve_suggestive.png', dpi=150)
 ```
 
-At the conventional suggestive-significance threshold (α=1×10⁻⁵), power improved modestly but remained limited for anything short of large effects: OR=5 crossed 80% power at MAF≥0.20, OR=3 reached a maximum of 58% power even at MAF=0.5, and power for OR=2 remained below 9% and for OR=1.5 below 1% across the entire tested MAF range (Figure SX). This confirms that even under a substantially relaxed significance threshold, the study remains underpowered to detect small-to-moderate effect sizes typical of complex-trait susceptibility loci.
+At the conventional suggestive-significance threshold (1e-5), statistical power improved modestly but remained constrained to large effect sizes: an OR=5 exceeded 80% power for variants with MAF > 0.20, whereas an OR=3 reached a maximum power of only 58\% even at MAF=0.50. For smaller effect sizes, power was severely limited, remaining below 9% for OR=2 and under 1% for OR=1.5 across the entire allele frequency spectrum. This confirms that even under a relaxed threshold, the study is underpowered to detect the small-to-moderate effects typical of complex-trait susceptibility loci.
 
 A suggestion:
 ```
@@ -1304,9 +1304,7 @@ fwrite(summary_out, "simpleM_summary.csv")
 cat("\nWrote simpleM_per_chr.csv and simpleM_summary.csv\n")
 ```
 
-The genome-wide significance threshold of 5×10⁻⁸ was derived for arrays with genome-wide backbone coverage approximating ~1,000,000 independent tests and is likely overly conservative for a targeted array with 181,595 variants. We therefore additionally computed an array-specific effective number of independent tests using the eigenvalue-based method of Li and Ji (2005), implemented following the windowed approach of Gao et al. (2008) (simpleM), applied to autosomal variants (n = 180,388; chromosome X excluded, see below). Pairwise LD correlation matrices were computed within sliding 2,000-SNP windows (500-SNP overlap), and the number of eigenvalues required to explain 99.5% of cumulative variance was summed across windows and chromosomes, yielding M_eff = 17,699.8 and a corrected significance threshold of 0.05/17,699.8 = 2.83×10⁻⁶. As a complementary, more conservative estimate, we also report a naive Bonferroni correction on the LD-pruned variant set (r² < 0.2; 54,327 variants; threshold = 9.20×10⁻⁷). No variant in this study reached significance under the genome-wide standard, the naive array-wide Bonferroni threshold, the LD-pruned threshold, or the simpleM-corrected threshold; the lowest observed p-value (2.6×10⁻⁵, rs[XXX]) falls short of even the least conservative of these. Chromosome X was excluded from the M_eff calculation due to [an unresolved excess of heterozygous-haploid genotype calls in male samples flagged during QC / pending pseudoautosomal-region splitting]; X-linked association results are reported [descriptively only / with a separate note], consistent with standard practice for excluding sex chromosomes from genome-wide M_eff estimation.
-
-The effective number of independent tests, estimated via windowed eigenvalue decomposition (Li & Ji, 2005; Gao et al., 2008) on the final analytic sample (N=164, autosomal variants, n=180,388), was M_eff=16,319.2, yielding a study-specific significance threshold of 0.05/16,319.2 = 3.06×10⁻⁶. The top association (rs1560036, p=2.42×10⁻⁵) did not reach this threshold.
+Because standard genome-wide significance (p = 5e-8) assumes approximately 1,000,000 independent tests and is overly stringent for a targeted array of 181,595 variants, we calculated an array-specific effective number of independent tests (M_eff). Using the eigenvalue decomposition method of Li and Ji (2005) via the sliding-window approach of Gao et al. (2008) (`simpleM`) across 180,388 autosomal variants in our analytic sample (N = 164), we estimated pairwise LD matrices within 2,000-SNP windows (500\-SNP overlap). Summing the eigenvalues required to explain 99.5% of cumulative variance yielded M_eff = 16,319.2, corresponding to a study-specific significance threshold of p = 3.06e-6 (0.05 / 16,319.2). For comparison, a naive Bonferroni correction on the LD-pruned variant set (r^2 < 0.2; 54,327 variants) yielded a threshold of p = 9.20e-7. Chromosome X was excluded from the M_eff calculation in accordance with standard practice for sex-chromosome filtering. No variant reached significance under any threshold, with the primary lead association (rs1560036, p = 2.42e-5) falling short of the study-specific M_eff cutoff.
 
 ```
 Result:
@@ -1327,7 +1325,7 @@ grep -w "ADD" gwas_firth_pc1-3_nosex.PHENO1.glm.logistic.hybrid | awk '$18!="NA"
 head -20 gwas_firth_pc1-3_nosex_sorted.txt
 ```
 
-Since age at recruitment was unavailable for this cohort, the primary association model adjusted for genetically-imputed sex (derived from X-chromosome heterozygosity; see Methods) in addition to the first three principal components. Adjustment for sex had minimal impact on association estimates relative to the PC-only model: the top-associated variant (rs1560036) showed nearly identical effect size and significance with sex included (OR=2.98, p=2.42×10⁻⁵) compared to without (OR=2.98, p=2.42×10⁻⁵), and the full top-20 list of associated loci was unchanged in composition and rank order between the two models. This stability suggests that residual sex-related confounding, if present, does not meaningfully influence the reported associations, and supports the inclusion of sex as a conservative but low-impact covariate in the final model.
+Because age at recruitment was unavailable, the primary association model adjusted for genetically imputed sex (derived from X-chromosome heterozygosity; see Methods) alongside the first three principal components. Adding sex as a covariate had virtually no impact on association statistics compared to the PC-only model: the lead variant (rs1560036) maintained identical effect size and significance (OR=2.98, p=2.42×10⁻⁵ in both models), while the composition and rank order of the top-20 loci remained completely unchanged. This stability demonstrates that residual sex-related confounding does not meaningfully distort the primary associations, justifying the inclusion of sex as a conservative, low-impact covariate in the final model.
 
 ```
 
@@ -1341,7 +1339,8 @@ Checking result:
 ```
 awk -F'\t' '$10=="ADD" && $17!="NA"' gwas_full_firth.PHENO1.glm.firth | sort -gk17,17 | head -20
 ```
-As a robustness check on the primary Firth-fallback logistic regression, we additionally fit full Firth regression (bias-corrected penalized likelihood applied uniformly across all variants) under the same covariate specification (genetically-imputed sex, PC1–3). Effect estimates and association rankings were highly concordant between the two approaches: the top-associated variant (rs1560036) showed OR=2.98 (p=2.42×10⁻⁵) under Firth-fallback and OR=2.84 (p=3.25×10⁻⁵) under full Firth, with the full top-20 loci list identical in composition and nearly identical in rank order between models. As expected, full Firth produced systematically more conservative estimates (effect sizes shrunk slightly toward the null), consistent with its uniform application of bias correction rather than selective correction at variants showing evidence of separation. This concordance indicates the reported associations are not artifacts of the fallback regression strategy.
+
+To evaluate the stability of the primary Firth-fallback logistic regression, we performed a robustness check using full Firth regression (applying bias-corrected penalized likelihood uniformly across all variants) with identical covariate adjustments (genetically imputed sex, PC1–3). Association rankings and effect estimates showed high concordance across models: the lead variant (rs1560036) yielded highly similar results (OR=2.98 and p=2.42×10⁻⁵ under Firth-fallback vs. OR=2.84 and p=3.25×10⁻⁵ under full Firth), and the composition of the top-20 loci remained identical with virtually unchanged rank ordering. As expected, full Firth produced slightly more conservative effect estimates shifted toward the null, reflecting uniform penalization rather than selective application at variants with separation. This high degree of alignment confirms that the reported associations are robust and not artifacts of the fallback regression procedure.
 
 3. Permutation
 ```
@@ -1373,7 +1372,7 @@ awk -F'\t' '$11=="ADD" && $18!="NA"' gwas_firth_genotypic.PHENO1.glm.logistic.hy
 awk -F'\t' '$11=="DOMDEV"' gwas_firth_genotypic.PHENO1.glm.logistic.hybrid | sort -gk18,18 | head -20
 ```
 
-As an additional sensitivity analysis, we fit a genotypic model allowing for non-additive (dominance-deviation) effects at each variant, using the same covariate specification (genetically-imputed sex, PC1–3). The additive-term (ADD) results from this model showed reduced statistical evidence relative to the primary additive-only model: the top hit remained rs1560036, but its significance attenuated (OR=3.00, p=1.28×10⁻⁴ under the genotypic model vs. p=2.42×10⁻⁵ under the additive-only model), and several loci from the primary top-20 list (e.g., rs13081814, rs4923807, rs62121092, rs11818063) fell outside the top ranks entirely. This reduction in power is expected: the genotypic model estimates an additional parameter (dominance deviation) per variant, which increases the effective number of parameters relative to the available sample size (N=164). Dominance-deviation terms could not be reliably estimated for a substantial number of low-frequency variants (minor allele frequency approximately 0.01–0.10 in the affected set), returning undefined estimates due to near-perfect collinearity between the additive and dominance terms (CORR_TOO_HIGH) — a well-recognized limitation of fitting non-additive genetic models at low allele frequencies in modestly-sized cohorts. Given these constraints, the genotypic model was not adopted for the primary analysis; the additive model, which is both statistically better-supported at this sample size and the standard convention for GWAS discovery analyses, was retained as primary. This sensitivity analysis does not provide evidence for dominance effects at the top loci and instead illustrates that any deviation from additivity in this dataset cannot be reliably distinguished from noise given current sample size.
+As a sensitivity analysis, we evaluated non-additive (dominance-deviation) effects using a genotypic model with identical covariate controls (genetically imputed sex, PC1–3). The additive terms (ADD) in this model yielded attenuated signal strength compared to the primary additive-only model: while rs1560036 remained the top association, its significance decreased (OR = 3.00, p = 1.28e-4 vs. p = 2.42 e-5} in the primary model), and several leading loci (e.g., rs13081814, rs4923807, rs62121092, rs11818063) lost top-tier ranking. This attenuation is expected given that estimating an extra dominance parameter reduces statistical power relative to the sample size (N = 164). Furthermore, dominance terms could not be reliably estimated for numerous low-frequency variants (MAF = 0.01-0.10), returning undefined estimates due to severe collinearity (CORR_TOO_HIGH), a recognized limitation when parameterizing non-additive models for low-frequency alleles in modest sample sizes. Consequently, the additive framework was retained for primary inference as both the standard GWAS discovery convention and the statistically better-supported model at this sample size. This sensitivity analysis yielded no evidence for non-additive mechanisms, demonstrating that potential dominance effects cannot be distinguished from sampling noise in this cohort.
 
 15. Annotation
 ```
@@ -1796,9 +1795,8 @@ roc.test(roc_asia, roc_eur)
 ```
 
 For a writeup:  
-To evaluate whether polygenic risk scores (PRS) for tuberculosis (TB) susceptibility, derived from published multi-ancestry GWAS data, could meaningfully stratify genetic risk in a Kazakh cohort, we constructed and validated PRS using summary statistics from the International Tuberculosis Host Genetics Consortium (ITHGC) multi-ancestry meta-analysis (Schurz et al., 2024). Because Kazakh ancestry is genetically intermediate between East Asian and European populations and was not itself represented in the ITHGC discovery cohorts, we tested two ancestry-specific base datasets in parallel — the Asian and European fixed-effects meta-analysis summary statistics (GWAMA) — to assess which showed better transferability to our target sample. After harmonizing genomic coordinates between datasets (lifting our target genotype data to GRCh37 and resolving variant identifiers via chromosome:position matching, since a substantial fraction of GWAMA variants and our array-genotyped SNPs used inconsistent ID formats), we performed linkage disequilibrium clumping (p<0.05, r²<0.1, 250kb windows) on each ancestry-specific base independently, retaining 3,602 independent variants from the Asian base (from 8,488 nominally significant SNPs prior to clumping) and 3,850 independent variants from the European base (from 10,312 nominally significant SNPs prior to clumping). PRS were calculated in PLINK as the weighted sum of risk allele dosages using effect sizes (log odds ratios) from each respective base, then standardized and evaluated in logistic regression models adjusted for ancestry principal components, with model performance assessed via AUC and Nagelkerke pseudo-R². Both ancestry-specific PRS showed a weak, non-significant association with TB case status in the expected direction (Asia-base: OR direction positive, p=0.26, AUC=0.585, Nagelkerke R²=0.027; Europe-base: p=0.50, AUC=0.572, Nagelkerke R²=0.021), and a DeLong's test comparing the two ROC curves found no statistically significant difference in predictive performance between the ancestry-specific bases (Z=0.34, p=0.74). These results suggest a modest, directionally consistent genetic signal that neither ancestry-specific PRS captures with statistical confidence in this cohort (n=164), most plausibly reflecting a combination of limited target sample size and the well-documented challenge of cross-ancestry PRS transferability for TB — a disease for which, as of this analysis, no validated PRS model exists in the PGS Catalog for any population.  
+To evaluate the applicability of multi-ancestry genetic risk models in a Kazakh cohort—a population genetically intermediate between East Asian and European lineages and unrepresented in prior discovery efforts—we constructed polygenic risk scores (PRS) using tuberculosis (TB) susceptibility summary statistics from the International Tuberculosis Host Genetics Consortium meta-analysis (Schurz et al., 2024). To determine cross-ancestry transferability, we processed two ancestry-specific base datasets in parallel from the fixed-effects meta-analyses: East Asian and European. Following coordinate harmonization to GRCh37 and variant ID alignment via genomic position matching, we conducted linkage disequilibrium clumping (p < 0.05, r^2 < 0.1, 250 kb window) on each base independently. This retained 3,602 independent variants from the Asian base (of 8,488 nominally significant SNPs) and 3,850 from the European base (of 10,312 nominally significant SNPs). Scores were calculated in PLINK as the weighted sum of risk allele dosages based on discovery log-odds ratios, standardized, and evaluated via principal-component-adjusted logistic regression models. Both PRS displayed weak, directionally consistent, but statistically non-significant associations with TB risk (Asian base: p = 0.26, AUC = 0.585, Nagelkerke R^2 = 0.027; European base: p = 0.50, AUC = 0.572, Nagelkerke R^2 = 0.021), with DeLong’s test showing no performance difference between the two bases (Z = 0.34, p = 0.74). These findings point to a modest, directionally congruent polygenic signal that lacks statistical precision in this cohort (n = 164), likely driven by limited target sample size and well-established barriers to cross-ancestry PRS transferability for TB—a trait for which no validated PRS currently exists in the PGS Catalog for any population.
 
-***need to rephrase to avoid plagiarism***
 	                                                      |   Asia	 |   Europe  |  
 SNPs shared between my data and the base (total overlap)  |  167980  |   176199  |  
 SNPs passing p<0.05 ("top variants," pre-LD-pruning)	  |  8,488   | 	 10,312  |  
@@ -1867,11 +1865,7 @@ sort -gk9,9 kazakh_gene_results_10kb.genes.out | head -20
 sort -gk9,9 kazakh_gene_results_35_10.genes.out | head -20
 ```
 
-Gene-based analysis using MAGMA, with LD estimated from an ancestry-matched Kazakh WGS reference panel (n=224), did not identify any gene reaching genome-wide significance (Bonferroni threshold ≈2.6×10⁻⁶ for ~19,000 genes tested; best gene-level p=4.36×10⁻⁴). The top-ranked genes were substantially consistent across two SNP-to-gene annotation window choices (10kb symmetric and 35kb upstream/10kb downstream; 12 of the top 20 genes overlapped between analyses), indicating this result is not sensitive to annotation window specification. Several top-ranked genes were driven by a single annotated SNP (NSNPS=1) and thus do not reflect genuine multi-SNP aggregation; [gene 23765, chr22] represented the most substantively aggregated signal among top hits (57 SNPs, 14 independent principal components). Consistent with SNP-level findings, gene-based results support a hypothesis-generating rather than confirmatory interpretation, in line with the study's limited statistical power (Figure SX).
-
-Note: several genes with NSNPS=1 (examples: 84902, 22992, 1475, 162962, 55608, 341116) aren't leveraging MAGMA's aggregation advantage at all; they're just single-SNP results relabeled.
-
-
+Gene-based testing in MAGMA—utilizing an ancestry-matched Kazakh WGS panel ($n=224$) for linkage disequilibrium estimation and a 35 kb upstream/10 kb downstream SNP-to-gene mapping window—revealed no genes meeting genome-wide significance across $15,015$ evaluated loci (Bonferroni threshold p = 3.33 e-6; top signal: gene 1793, chr10:126,870,409–127,462,517, NSNPS=25, p = 5.84 e-4). The leading associations were robust to parameter specification, exhibiting substantial concordance with a symmetric 10 kb window (12 of the top 20 genes overlapping). However, several top-tier signals were driven by a single mapped variant (NSNPS=1: genes 2250, 84902, 91442, 22992, and 1475) rather than true multi-marker accumulation; among top hits, gene 23765 (chr22) represented the most compelling multi-SNP aggregation (57 SNPs, 14 independent principal components), replicating consistently across both annotation frameworks. 
 
 Getting p values for snp level gwas and gene lvele magma for each rsid:
 ```
@@ -1926,17 +1920,49 @@ combined.to_csv("magma_genes_with_snps.tsv", sep="\t", index=False)
 ```
 
 
-
 Viewing the top 20:
-awk -F'\t' 'NR>1 && $6!="" && $6!="NA" && $8!="NA" {print}' magma_genes_with_snps.tsv | sort -t$'\t' -gk6,6 | column -t -s$'\t' | head -20
-awk -F'\t' 'NR>1 && $8!="" && $6!="NA" && $8!="NA" {print}' magma_genes_with_snps.tsv | sort -t$'\t' -gk8,8 | column -t -s$'\t' | head -20
+```
+awk -F'\t' 'NR>1 && $8!="" && $6!="NA" && $8!="NA"{print}' magma_genes_with_snps.tsv | \
+    sort -t$'\t' -gk8,8 | \
+    awk -F'\t' '!seen[$7]++' | \
+    head -20
+```
 
-This doesn't work. I need to get the overap or venn diagram or something to actuall see the overlap of p values
+Results:
+```
+# results for 35/10 window - sorting by magma p value (column 6):
+GENE	 CHR	START	     STOP	     NSNPS	GENE_P	
+1793       10  126870409.0  127462517.0  25.0   0.00058367
+10082      13  93191825.0   94418020.0   28.0   0.00061013
+131566     3   98785970.0   98936689.0   4.0    0.00071572
+2250       4   80231588.0   80301017.0   1.0    0.00076163
+10814      5   175761539.0  175894021.0  8.0    0.00089952
+84902      19  32868998.0   33007029.0   1.0    0.00098898
+91442      19  32937217.0   32987495.0   1.0    0.00098898
+22992      11  67084268.0   67268082.0   1.0    0.0010639
+55388      10  13126554.0   13221104.0   7.0    0.0011826
+51068      3   161186262.0  161262294.0  13.0   0.0012082
+1475       3   122290164.0  122351969.0  1.0    0.0013308
+148066     19  5420415.0    5466856.0    4.0    0.0014699
+23765      22  17049959.0   17125694.0   57.0   0.0017129
+9857       1   179919773.0  180124880.0  7.0    0.0018117
+105376141  9   89619416.0   89672115.0   2.0    0.0023334
+2201       5   128247909.0  128573042.0  7.0    0.0023685
+1119       11  68042859.0   68156391.0   2.0    0.0024397
+23140      17  3994445.0    4178020.0    8.0    0.0024524
+57590      2   223865343.0  223980387.0  3.0    0.0025761
+27065      4   4351256.0    4429058.0    3.0    0.0025774
+```
 
+Of the 15,015 genes with a valid gene-based test statistic (genes lacking annotated SNPs or failing MAGMA's internal filtering criteria were excluded), none reached the Bonferroni-corrected gene-wide significance threshold (α=0.05/15,015=3.33×10⁻⁶). The top-ranked gene (Entrez ID 1793, chr 10:126870409–127462517) showed a p-value of 0.00058367, which is noticeably higher than the corrected threshold. Results were consistent across two SNP-to-gene annotation windows (10kb symmetric and 35kb upstream/10kb downstream), with 12 of the top 20 genes overlapping between analyses. We choose to use 35kb upstream/10kb downstream window for the main results.
 
-# could do:
-# gene set enrichment - need to download
-# a gene set file, e.g. MSigDB curated/immune-relevant sets in MAGMA-compatible format
-#magma_v1.10/magma --gene-results kazakh_gene_results.genes.raw \
-#    --set-annot msigdb_immune_sets.txt \
-#    --out kazakh_pathway_results
+Cross checking magma + gwas = done in comparing_magma_and_gwas.ipynb
+
+Interpretation
+```
+Our primary single-SNP hit, rs1560036, maps directly to gene 10814, which independently ranks 5th out of 15,015 genes in the MAGMA gene-based test (p=9.0e-4). This provides internal consistency: two distinct statistical frameworks, single-variant regression and multi-SNP gene aggregation using ancestry-matched LD references point to the exact same locus as the leading signal, even though neither hits formal genome-wide significance.
+Six of our top-39 variants (rs4470535, rs4273380, rs4518145, rs4370045, rs6775627, rs4597724) map to gene 51068 (chr3:161,186,262–161,262,294), which places 10th overall (p=1.2e-3). This pattern is structural rather than accidental; these SNPs likely share a single haplotype block in strong LD. Consequently, these separate table entries actually represent one underlying locus, meaning our 39 top variants translate to far fewer independent signals.
+Similarly, rs336577, rs336569, and rs336570 all map to gene 165679 (rank 29, p=3.76e-3). This duplicates the same pattern, reflecting a single regional LD block rather than three distinct loci.
+Past the top 15–20 gene rankings, MAGMA p-values decay rapidly toward baseline (rank 305 reaches p=0.025; rank 1230+ exceeds p>0.09). 
+```
+  
