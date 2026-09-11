@@ -54,3 +54,6 @@ BEGIN{
 { print }
 ' GRCh38_genome.fa > GRCh38_v2.fa
 ```
+
+bcftools +fixref tb_dataset.vcf -- -f GRCh38_v2.fa
+bcftools norm --check-ref e -f GRCh38_v2.fa tb_dataset.vcf -Ou -o /dev/null
