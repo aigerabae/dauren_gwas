@@ -1804,6 +1804,7 @@ Final independent SNPs after clumping                     |  3,602   |   3,850  
 
 
 # 17 MAGMA:
+```
 I will use wgs kazakh data for ld:
 # from server to get my binary files (workflow is in wgs github repo) and i copied binary files to local /mnt/harddisk/biostar/dauren_gwas/redo_july/plink/magma
 # i also copied gwas_firth_pc1-3_sex.PHENO1.glm.logistic.hybrid  and d13 binary files into /mnt/harddisk/biostar/dauren_gwas/redo_july/plink/magma
@@ -1816,6 +1817,8 @@ I will use wgs kazakh data for ld:
 plink2 --bfile kaz7 --extract d13.bim --make-bed --out kazakh_wgs_ref_overlap
 
 # 3. Basic QC on the reference panel itself (MAGMA/standard LD-panel conventions)
+```
+```
 plink2 --bfile kazakh_wgs_ref_overlap --maf 0.01 --geno 0.05 --make-bed --out kazakh_wgs_ref_final
 
 # getting p values
@@ -1842,10 +1845,9 @@ magma_v1.10/magma --annotate window=35,10 \
     --snp-loc d13.bim \
     --gene-loc NCBI38/NCBI38.gene.loc \
     --out kazakh_gwas_annot_35_10
+```
 
-
-
-	
+```
 # gene based test
 # Primary (10kb/10kb)
 magma_v1.10/magma --bfile kazakh_wgs_ref_final \
