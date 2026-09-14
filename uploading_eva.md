@@ -102,3 +102,8 @@ Validating again:
 ```
 eva-sub-cli.py --metadata_xlsx EVA_TB.xlsx --submission_dir ./ --tasks VALIDATE
 ```
+
+Needed to fix link to be an array; did it manually using json it generated into the validation result folder
+```
+eva-sub-cli.py --metadata_json tb_metadata.json --submission_dir ./ --tasks VALIDATE
+```
