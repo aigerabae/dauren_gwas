@@ -107,3 +107,8 @@ Needed to fix link to be an array; did it manually using json it generated into 
 ```
 eva-sub-cli.py --metadata_json tb_metadata.json --submission_dir ./ --tasks VALIDATE
 ```
+
+Uploading:
+```
+eva-sub-cli.py --metadata_json tb_metadata.json --submission_dir ./ --username Webin-70477 --password 11@@qqWWvcf
+```
