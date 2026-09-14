@@ -5,8 +5,6 @@ eva-sub-cli.py --help
 plink --bfile d13 --recode vcf --out tb_dataset
 
 eva-sub-cli.py --metadata_xlsx EVA_TB.xlsx --submission_dir ./ --tasks VALIDATE
-
-eva-sub-cli.py --metadata_json EVA_TB.json --submission_dir ./ --tasks VALIDATE
 ```
 
 ```
@@ -94,9 +92,13 @@ bcftools norm --check-ref e -f GRCh38_official.fa tb_dataset.fixref.vcf.gz -Ou -
 ```
 
 let's refresh what we did here: 
-1) i fixed Column "Taxonomy ID" is not populated by adding it manually into my metadata;
-2) i fixed sample names to be 207859430008_R02C01 and not 207859430008_R02C01_207859430008_R02C01 in the vcf (kept the same name tb_dataset.vcf);
-3) changed assemby accession in metadata from GCF_000001405.40 to GCA_000001405.15.
-4) Assembly check - ref alt not matching - flipped those alleles
-5) Warning: Non-GCA reference found in metadata. Please provide the INSDC accession for your reference assembly Some sequences are not INSDC accessioned. For my dataset i used grch38.fa file supplied by illumina and i initially tried to verify my dataset against it but I decided to use legit GCA assembly instead
+1) i fixed Column "Taxonomy ID" is not populated by adding it manually into my metadata;  
+2) i fixed sample names to be 207859430008_R02C01 and not 207859430008_R02C01_207859430008_R02C01 in the vcf (kept the same name tb_dataset.vcf);  
+3) changed assemby accession in metadata from GCF_000001405.40 to GCA_000001405.15  
+4) Assembly check - ref alt not matching - flipped those alleles  
+5) Warning: Non-GCA reference found in metadata. Please provide the INSDC accession for your reference assembly Some sequences are not INSDC accessioned. For my dataset i used grch38.fa file supplied by illumina and i initially tried to verify my dataset against it but I decided to use legit GCA assembly instead and changed ref file in the metadata to be GRCh38_official.fa  
 
+Validating again:
+```
+eva-sub-cli.py --metadata_xlsx EVA_TB.xlsx --submission_dir ./ --tasks VALIDATE
+```
