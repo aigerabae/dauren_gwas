@@ -583,7 +583,7 @@ echo "d9 (HWE filtered): $(wc -l < d9.fam) samples, $(wc -l < d9.bim) variants" 
 plink --bfile d9 --maf 0.01 --make-bed --out d10 --allow-no-sex
 echo "d10 (MAF>=0.01): $(wc -l < d10.fam) samples, $(wc -l < d10.bim) variants" >> ../qc_log/counts.txt
 ```
-Adjust --maf up (0.05) if power calculations suggest 0.01 still leaves you underpowered — worth checking sample size vs. detectable MAF explicitly given your N.
+Adjust --maf up (0.05) if  calculations suggest 0.01 still leaves you undered — worth checking sample size vs. detectable MAF explicitly given your N.
 
 
 # 7. Population Structure
@@ -1173,7 +1173,7 @@ plink --bfile d13_control --freq --out d13_control
 ```
 
 
-# 12. Post-Hoc Power Calculation
+# 12. Post-Hoc  Calculation
 
 ## 12.1 Power at Genome-Wide Significance (α = 5e-8)
 
@@ -1229,7 +1229,7 @@ Power calculation for suggestive variants:
 ```R
 power_suggestive <- genpwr.calc(
   calc = "power", model = "logistic",
-  N = 164, Case.Rate = 84/179,
+  N = 164, Case.Rate = 84/164,
   MAF = seq(0.01, 0.5, 0.01),
   OR = c(1.5, 2, 3, 5),
   Alpha = 1e-5,   # your suggestive/effective threshold
@@ -2001,6 +2001,134 @@ sort -gk9,9 kazakh_gene_results_35_10.genes.out | head -20
 
 Gene-based testing in MAGMA—utilizing an ancestry-matched Kazakh WGS panel ($n=224$) for linkage disequilibrium estimation and a 35 kb upstream/10 kb downstream SNP-to-gene mapping window—revealed no genes meeting genome-wide significance across $15,015$ evaluated loci (Bonferroni threshold p = 3.33 e-6; top signal: gene 1793, chr10:126,870,409–127,462,517, NSNPS=25, p = 5.84 e-4). The leading associations were robust to parameter specification, exhibiting substantial concordance with a symmetric 10 kb window (12 of the top 20 genes overlapping). However, several top-tier signals were driven by a single mapped variant (NSNPS=1: genes 2250, 84902, 91442, 22992, and 1475) rather than true multi-marker accumulation; among top hits, gene 23765 (chr22) represented the most compelling multi-SNP aggregation (57 SNPs, 14 independent principal components), replicating consistently across both annotation frameworks. 
 
+Getting AUC asia:
+```R
+library(pROC)
+
+# Read the profile file
+prs <- read.table("prs_asia_base.profile", header = TRUE)
+
+# PLINK codes: 1 = control, 2 = case
+prs$status <- ifelse(prs$PHENO == 2, "case", "control")
+
+# Compute AUC
+roc_asia <- roc(response = prs$status, predictor = prs$SCORE,
+                 levels = c("control", "case"), direction = "<")
+
+auc(roc_asia)
+ci.auc(roc_asia)   # 95% CI on the AUC
+
+# Logistic regression of case status on PRS (unadjusted)
+prs$y <- ifelse(prs$PHENO == 2, 1, 0)
+summary(glm(y ~ SCORE, data = prs, family = binomial))
+
+# Optional: plot the ROC curve for a manuscript figure
+plot(roc_asia, main = "Asia-base PRS: ROC curve")
+
+set.seed(42)
+ci.auc(roc_asia)
+```
+
+Getting AUC europe:
+```R
+library(pROC)
+
+# Read the profile file
+prs <- read.table("prs_europe_base.profile", header = TRUE)
+
+# PLINK codes: 1 = control, 2 = case
+prs$status <- ifelse(prs$PHENO == 2, "case", "control")
+
+# Compute AUC
+roc_europe <- roc(response = prs$status, predictor = prs$SCORE,
+                 levels = c("control", "case"), direction = "<")
+
+auc(roc_europe)
+ci.auc(roc_europe)   # 95% CI on the AUC
+
+# Logistic regression of case status on PRS (unadjusted)
+prs$y <- ifelse(prs$PHENO == 2, 1, 0)
+summary(glm(y ~ SCORE, data = prs, family = binomial))
+
+# Optional: plot the ROC curve for a manuscript figure
+plot(roc_asia, main = "Europe-base PRS: ROC curve")
+
+set.seed(42)
+ci.auc(roc_europe)
+```
+
+Getting more info (needs pca_164.eigenvec and prs profile files):
+```
+library(pROC)
+library(dplyr)
+
+# --- Load PRS scores ---
+asia   <- read.table("prs_asia_base.profile", header = TRUE)
+europe <- read.table("prs_europe_base.profile", header = TRUE)
+
+# --- Load PCs (plink2 --pca output; header starts with "#FID") ---
+pcs <- read.table("pca_164.eigenvec", header = TRUE, comment.char = "")
+names(pcs)[1] <- "FID"   # strip the leading "#" plink2 puts on the header
+
+# --- Merge PRS with PCs, on FID + IID ---
+asia_m   <- merge(asia,   pcs, by = c("FID", "IID"))
+europe_m <- merge(europe, pcs, by = c("FID", "IID"))
+
+# --- Recode phenotype: PLINK 2=case, 1=control -> 1/0 ---
+asia_m$y   <- ifelse(asia_m$PHENO   == 2, 1, 0)
+europe_m$y <- ifelse(europe_m$PHENO == 2, 1, 0)
+
+# --- Helper to pull just the SCORE row's p-value out of a glm summary ---
+score_pval <- function(model) {
+  coef(summary(model))["SCORE", "Pr(>|z|)"]
+}
+
+# ===== Model 1: Asia-base, PRS alone =====
+m1 <- glm(y ~ SCORE, data = asia_m, family = binomial)
+summary(m1)
+score_pval(m1)
+
+# ===== Model 2: Asia-base, PRS + PCs =====
+m2 <- glm(y ~ SCORE + PC1 + PC2 + PC3, data = asia_m, family = binomial)
+summary(m2)
+score_pval(m2)
+
+# ===== Model 3: Europe-base, PRS alone =====
+m3 <- glm(y ~ SCORE, data = europe_m, family = binomial)
+summary(m3)
+score_pval(m3)
+
+# ===== Model 4: Europe-base, PRS + PCs =====
+m4 <- glm(y ~ SCORE + PC1 + PC2 + PC3, data = europe_m, family = binomial)
+summary(m4)
+score_pval(m4)
+
+# --- Pull everything into one tidy table for the manuscript ---
+results <- data.frame(
+  Base  = c("Asia", "Asia", "Europe", "Europe"),
+  Model = c("PRS alone", "PRS + PC1-3", "PRS alone", "PRS + PC1-3"),
+  Beta_SCORE = c(coef(m1)["SCORE"], coef(m2)["SCORE"],
+                 coef(m3)["SCORE"], coef(m4)["SCORE"]),
+  P_value    = c(score_pval(m1), score_pval(m2),
+                 score_pval(m3), score_pval(m4))
+)
+print(results)
+write.csv(results, "prs_logistic_regression_summary.csv", row.names = FALSE)
+
+asia_m$SCORE_z   <- as.numeric(scale(asia_m$SCORE))
+europe_m$SCORE_z <- as.numeric(scale(europe_m$SCORE))
+
+m1z <- glm(y ~ SCORE_z, data = asia_m, family = binomial)
+m2z <- glm(y ~ SCORE_z + PC1 + PC2 + PC3, data = asia_m, family = binomial)
+m3z <- glm(y ~ SCORE_z, data = europe_m, family = binomial)
+m4z <- glm(y ~ SCORE_z + PC1 + PC2 + PC3, data = europe_m, family = binomial)
+
+# OR per SD increase in PRS, with 95% CI
+exp(cbind(OR = coef(m1z), confint(m1z)))["SCORE_z", ]
+exp(cbind(OR = coef(m2z), confint(m2z)))["SCORE_z", ]
+exp(cbind(OR = coef(m3z), confint(m3z)))["SCORE_z", ]
+exp(cbind(OR = coef(m4z), confint(m4z)))["SCORE_z", ]
+```
 
 ## 17.2 SNP-to-Gene Cross-Referencing with GWAS p-values
 
