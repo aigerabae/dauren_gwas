@@ -914,7 +914,7 @@ for pheno, label, color in [(2,'Case','red'), (1,'Control','blue')]:
     sub = merged[merged['PHENO']==pheno]
     plt.scatter(sub['PC1'], sub['PC2'], label=label, alpha=0.6, c=color)
 plt.xlabel('PC1'); plt.ylabel('PC2'); plt.legend()
-plt.title('PCA colored by case/control status (168)')
+plt.title('PCA colored by case/control status (164)')
 plt.savefig('pca_case_control_after3.png', dpi=150)
 ```
 
@@ -936,6 +936,35 @@ plt.savefig('scree_plot2.png')
 
 Following outlier removal, the PCA eigenvalue spectrum exhibited no clear elbow (Supplementary Figure X), indicating a homogeneous residual cohort. Association analyses were consequently adjusted for [N] principal components, and the resulting estimates remained robust when adding up to 10 PCs (Supplementary Table Y).
 
+Re-making worldwide PCA with final cohort:
+```
+cd ref_pops
+plink --bfile d13 --bmerge merged6.bed merged6.bim merged6.fam --out together
+plink --bfile d13 --exclude together.missnp --make-bed --out d14
+plink --bfile d14 --bmerge merged6.bed merged6.bim merged6.fam --out together
+plink --bfile together --geno 0.05 --make-bed --out together2 --allow-no-sex
+plink --bfile together2 --mind 0.05 --make-bed --out together3 --allow-no-sex
+awk '{print $1, $2, $2, $2}' together3.fam > update_ids.txt
+plink2 --bfile together3 --update-ids update_ids.txt --make-bed --out together4
+
+# pruning and PCA
+plink --bfile together4 --indep-pairwise 50 5 0.2 --out prune --allow-no-sex
+plink --bfile together4 --extract prune.prune.in --make-bed --out together4_pruned --allow-no-sex
+plink2 --bfile together4_pruned --pca 10 --out pca
+
+# metadata:
+cat infile.txt | awk '{print $1"\t"$2"\tprevious"}' > m1.txt
+cat ../d10.fam | awk '{print $1 "\tcurrent" "\tcurrent" }' > m2.txt
+cat m1.txt m2.txt > m3.txt
+cat m3.txt | awk '{print $1 "\t" tolower($2) "\t" tolower($3)}' > m4.txt
+
+awk '$2 ~ /^(azeri|buryat|hazara|polish|spanish|turkmen|ukrainian|uygur|tuvan|yakut|han_china|russian_central|altaian|french|german|kazakh|koryak|lezgin|pathan|tatar|current)$/' m4.txt > m5.txt
+take from m4 only those rows where column 2 is either: azeri, buryat, hazara, polish, spanish, turkmen, ukrainian, uygur, tuvan, yakut, han_china, russian_central, altaian, french, german, kazakh, koryak, lezgin, pathan, tatar, current
+
+python plot_eigenvec.py pca.eigenvec m5.txt
+```
+
+I will have more code to get a png from this html:
 
 # 8. Association Testing
 
